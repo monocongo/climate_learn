@@ -3,7 +3,7 @@ from datetime import datetime
 import logging
 import math
 
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn import metrics
@@ -23,13 +23,6 @@ logging.basicConfig(level=logging.INFO,
 _logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-
-
-
-"""## Define the input function
-
-"""
-
 def get_input(features, 
               targets, 
               batch_size=1, 
@@ -69,10 +62,12 @@ def get_input(features,
     """
   
     # Convert xarray data into a dict of numpy arrays.
-    features = {key:np.array(value) for key,value in dict(features).items()}                                           
- 
+    # Each dictionary item will be key == variable name, value == variable array
+    features_dict = {var:features[var].values for var in features.variables}
+    targets_dict = {var:targets[var].values for var in targets.variables}
+
     # Construct a dataset, and configure batching/repeating.
-    ds = Dataset.from_tensor_slices((features, targets)) # warning: 2GB limit
+    ds = Dataset.from_tensor_slices((features_dict, targets_dict)) # warning: 2GB limit
     ds = ds.batch(batch_size).repeat(num_epochs)
     
     # Shuffle the data, if specified.
@@ -143,7 +138,7 @@ if __name__ == '__main__':
         for var in data_h0.variables:
             if (var not in feature_vars) and (var not in feature_coord_vars):
                 data_h0 = data_h0.drop(var)  
-        features = data_h0
+        features = data_h0.to_dataframe()
         
         # Configure numeric feature columns for the input features.
         feature_columns = []
@@ -173,16 +168,16 @@ if __name__ == '__main__':
         for var in data_h1.variables:
             if (var not in target_vars) and (var not in target_coord_vars):
                 data_h1 = data_h1.drop(var)
-        targets = data_h1
+        targets = data_h1.to_dataframe()
         
-        # Confirm the compatability of our features and targets datasets,
-        # in terms of dimensions and coordinates.
-        if features.dims != targets.dims:
-            print("WARNING: Unequal dimensions")
-        else:
-            for coord in features.coords:
-                if not (features.coords[coord] == targets.coords[coord]).all():
-                    print("WARNING: Unequal {} coordinates".format(coord))
+#         # Confirm the compatability of our features and targets datasets,
+#         # in terms of dimensions and coordinates.
+#         if features.dims != targets.dims:
+#             print("WARNING: Unequal dimensions")
+#         else:
+#             for coord in features.coords:
+#                 if not (features.coords[coord] == targets.coords[coord]).all():
+#                     print("WARNING: Unequal {} coordinates".format(coord))
         
         """
         ## Split the data into training, validation, and testing datasets
@@ -311,14 +306,14 @@ if __name__ == '__main__':
         
         print("Model training finished.")
         
-        # Output a graph of loss metrics over periods.
-        plt.ylabel("RMSE")
-        plt.xlabel("Periods")
-        plt.title("Root Mean Squared Error vs. Periods")
-        plt.tight_layout()
-        plt.plot(training_rmse, label="training")
-        plt.plot(validation_rmse, label="validation")
-        plt.legend()
+#         # Output a graph of loss metrics over periods.
+#         plt.ylabel("RMSE")
+#         plt.xlabel("Periods")
+#         plt.title("Root Mean Squared Error vs. Periods")
+#         plt.tight_layout()
+#         plt.plot(training_rmse, label="training")
+#         plt.plot(validation_rmse, label="validation")
+#         plt.legend()
         
         print("Final RMSE (on training data):   %0.2f" % training_root_mean_squared_error)
         print("Final RMSE (on validation data): %0.2f" % validation_root_mean_squared_error)
