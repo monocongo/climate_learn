@@ -318,6 +318,22 @@ if __name__ == '__main__':
         print("Final RMSE (on training data):   %0.2f" % training_root_mean_squared_error)
         print("Final RMSE (on validation data): %0.2f" % validation_root_mean_squared_error)
 
+        # Create an input function for test dataset.
+        predict_input_testing = lambda: get_input(features_testing, 
+                                                  targets_testing, 
+                                                  num_epochs=1, 
+                                                  shuffle=False)
+        
+        # Get predictions for testing dataset.
+        predictions_testing = dnn_regressor.predict(input_fn=predict_input_testing)
+        predictions_testing = np.array([item['predictions'][0] for item in predictions_testing])
+            
+        # Compute training and validation loss.
+        rmse_test = math.sqrt(metrics.mean_squared_error(predictions_testing, targets_testing))
+        
+        # Print the current loss.
+        print("Testing RMSE: %0.2f" % (rmse_test))
+
         # report on the elapsed time
         end_datetime = datetime.now()
         _logger.info("End time:      %s", end_datetime)
