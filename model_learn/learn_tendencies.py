@@ -134,11 +134,10 @@ if __name__ == '__main__':
         # remove all non-feature variables and unrelated coordinate variables 
         # from the dataset, in order to trim the memory footprint.
         feature_vars = ['PS', 'T', 'U', 'V']
-        feature_coord_vars = ['time', 'lev', 'lat', 'lon']
         for var in data_h0.variables:
-            if (var not in feature_vars) and (var not in feature_coord_vars):
+            if var not in feature_vars:
                 data_h0 = data_h0.drop(var)  
-        features = data_h0.to_dataframe()
+        features = data_h0
         
         # Configure numeric feature columns for the input features.
         feature_columns = []
@@ -164,20 +163,19 @@ if __name__ == '__main__':
         # Remove all non-target variables and unrelated coordinate variables
         # from the DataSet, in order to trim the memory footprint.
         target_vars = ['PTTEND', 'PUTEND', 'PVTEND']
-        target_coord_vars = ['time', 'lev', 'lat', 'lon']
         for var in data_h1.variables:
-            if (var not in target_vars) and (var not in target_coord_vars):
+            if var not in target_vars:
                 data_h1 = data_h1.drop(var)
-        targets = data_h1.to_dataframe()
+        targets = data_h1
         
-#         # Confirm the compatability of our features and targets datasets,
-#         # in terms of dimensions and coordinates.
-#         if features.dims != targets.dims:
-#             print("WARNING: Unequal dimensions")
-#         else:
-#             for coord in features.coords:
-#                 if not (features.coords[coord] == targets.coords[coord]).all():
-#                     print("WARNING: Unequal {} coordinates".format(coord))
+        # Confirm the compatability of our features and targets datasets,
+        # in terms of dimensions and coordinates.
+        if features.dims != targets.dims:
+            print("WARNING: Unequal dimensions")
+        else:
+            for coord in features.coords:
+                if not (features.coords[coord] == targets.coords[coord]).all():
+                    print("WARNING: Unequal {} coordinates".format(coord))
         
         """
         ## Split the data into training, validation, and testing datasets
@@ -265,7 +263,10 @@ if __name__ == '__main__':
         
         """## Train and evaluate the model
         
-        We can now call `train()` on our `dnn_regressor` to train the model. We'll loop over a number of periods and on each loop we'll train the model, use it to make predictions, and compute the RMSE of the loss for both training and validation datasets.
+        We can now call `train()` on our `dnn_regressor` to train the model. 
+        We'll loop over a number of periods and on each loop we'll train
+        the model, use it to make predictions, and compute the RMSE of the
+        loss for both training and validation datasets.
         """
         
         print("Training model...")
@@ -292,17 +293,17 @@ if __name__ == '__main__':
             validation_predictions = np.array([item['predictions'][0] for item in validation_predictions])
             
             # Compute training and validation loss.
-            training_root_mean_squared_error = math.sqrt(
-                metrics.mean_squared_error(training_predictions, targets_training))
-            validation_root_mean_squared_error = math.sqrt(
-                metrics.mean_squared_error(validation_predictions, targets_validation))
+            rmse_train = math.sqrt(metrics.mean_squared_error(training_predictions, 
+                                                              targets_training))
+            rmse_valid = math.sqrt(metrics.mean_squared_error(validation_predictions, 
+                                                              targets_validation))
             
             # Print the current loss.
-            print("  period %02d : %0.2f" % (period, training_root_mean_squared_error))
+            print("  period %02d : %0.2f" % (period, rmse_train))
             
             # Add the loss metrics from this period to our list.
-            training_rmse.append(training_root_mean_squared_error)
-            validation_rmse.append(validation_root_mean_squared_error)
+            training_rmse.append(rmse_train)
+            validation_rmse.append(rmse_valid)
         
         print("Model training finished.")
         
@@ -311,12 +312,12 @@ if __name__ == '__main__':
 #         plt.xlabel("Periods")
 #         plt.title("Root Mean Squared Error vs. Periods")
 #         plt.tight_layout()
-#         plt.plot(training_rmse, label="training")
+#         plt.plot(rmse_train, label="training")
 #         plt.plot(validation_rmse, label="validation")
 #         plt.legend()
         
-        print("Final RMSE (on training data):   %0.2f" % training_root_mean_squared_error)
-        print("Final RMSE (on validation data): %0.2f" % validation_root_mean_squared_error)
+        print("Final RMSE (on training data):   %0.2f" % rmse_train)
+        print("Final RMSE (on validation data): %0.2f" % rmse_valid)
 
         # Create an input function for test dataset.
         predict_input_testing = lambda: get_input(features_testing, 
