@@ -184,7 +184,7 @@ if __name__ == '__main__':
         else:
             for var_h0 in data_h0.variables:
                 for var_h1 in data_h1.variables:
-                    Sif data_h0[var_h0].dims != data_h1[var_h1].dims:
+                    if data_h0[var_h0].dims != data_h1[var_h1].dims:
                         print("WARNING: Unequal shapes for feature {} and target {}".format(var_h0, var_h1))
         
         """
