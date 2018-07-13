@@ -23,36 +23,17 @@ logging.basicConfig(level=logging.INFO,
 _logger = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------------------------------------------------
-def get_input(features, 
-              targets, 
+def get_input(features_ds, 
+              targets_ds, 
               batch_size=1, 
               shuffle=True, 
               num_epochs=None):
     """
     Extracts a batch of elements from a dataset.
   
-    To import our weather data into our DNNRegressor, we need to define 
-    an input function, which instructs TensorFlow how to preprocess the data,
-    as well as how to batch, shuffle, and repeat it during model training.
-    
-    First, we'll convert our xarray feature data into a dict of NumPy arrays.
-    We can then use the TensorFlow Dataset API to construct a dataset object 
-    from our data, and then break our data into batches of `batch_size`, to be
-    repeated for the specified number of epochs (`num_epochs`).
-    
-    NOTE: When the default value of `num_epochs=None` is passed to `repeat()`,
-    the input data will be repeated indefinitely.
-    
-    Next, if `shuffle` is set to True, we'll shuffle the data so that it's
-    passed to the model randomly during training. The `buffer_size` argument
-    specifies the size of the dataset from which shuffle will randomly sample.
-    
-    Finally, our input function constructs an iterator for the dataset 
-    and returns the next batch of data.
-
     Args:
-      features: xarray Dataset of features
-      targets: xarray Dataset of targets
+      features: xarray Dataset of features, with n feature variables
+      targets: xarray Dataset of targets, with one target variable
       batch_size: Size of batches to be passed to the model
       shuffle: True or False. Whether to shuffle the data.
       num_epochs: Number of epochs for which data should be repeated. 
@@ -61,13 +42,32 @@ def get_input(features,
       Tuple of (features, labels) for next data batch
     """
   
+    # Get the shape of the initial feature variable, which we assume is the same
+    # as all other feature and target variables. The we'll use the product of 
+    # the final three values (lev, lat, and lon) as the first shape value we'll
+    # use for our reshaped feature arrays, and use the variable's first shape
+    # value as the second shape value of our reshaped feature arrays.
+    var_shape = list(features_ds.variables.items())[0][1].shape
+    s0 = var_shape[1] * var_shape[2] * var_shape[3]
+    s1 = var_shape[0]
+    
     # Convert xarray data into a dict of numpy arrays.
-    # Each dictionary item will be key == variable name, value == variable array
-    features_dict = {var:features[var].values for var in features.variables}
-    targets_dict = {var:targets[var].values for var in targets.variables}
-
-    # Construct a dataset, and configure batching/repeating.
-    ds = Dataset.from_tensor_slices((features_dict, targets_dict)) # warning: 2GB limit
+    # For each feature variable we have a 4-D array of values, with dimensions
+    # (time, lev, lat, lon). We'll swap the axes to (lon, lat, lev, time) then
+    # reshape the array to 2-D with shape (lon*lat*lev, time), i.e. (s0, s1).
+    features = {}
+    for var in features_ds.variables:
+        v = features_ds[var]  # the variable itself is an xarray.DataArray
+        features[var] = v.values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
+        
+    # Perform the same for the target dataset, which we assume contains a single
+    # variable with the same initial shape as the feature dataset's variables.
+    targets = {}
+    var = targets_ds.variables[0]
+    targets[var] = var.values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
+    
+    # Construct a TensorFlow Dataset, and configure batching/repeating.
+    ds = Dataset.from_tensor_slices((features, targets)) # warning: 2GB limit
     ds = ds.batch(batch_size).repeat(num_epochs)
     
     # Shuffle the data, if specified.
@@ -131,19 +131,26 @@ if __name__ == '__main__':
         
         # Define the input features as PS, T, U, and V.
         
-        # remove all non-feature variables and unrelated coordinate variables 
-        # from the dataset, in order to trim the memory footprint.
-        feature_vars = ['PS', 'T', 'U', 'V']
+        # Remove all non-feature variables from the dataset.
+        feature_vars = ['T', 'U', 'V']
+        # include PS once we understand how to deal with a variable that
+        # has different dimensions, since PS is missing the lev dimension
+        #feature_vars = ['PS', 'T', 'U', 'V']
         for var in data_h0.variables:
             if var not in feature_vars:
-                data_h0 = data_h0.drop(var)  
-        features = data_h0
+                data_h0 = data_h0.drop(var)
         
         # Configure numeric feature columns for the input features.
+        # Each column will contain a 1-D array representing the time series
+        # for a geospatial point (x, y, z) or (lon, lat, lev), so the shape 
+        # of the column will be the number of time steps, i.e. the size of the time
+        # dimension of the variable. The variables are assumed to have dimensions
+        # (time, lev, lat, lon).
         feature_columns = []
         for var in feature_vars:
-            feature_columns.append(tf.feature_column.numeric_column(var, shape=features[var].shape))
-        
+            feature_columns.append(
+                tf.feature_column.numeric_column(var, shape=data_h0[var].shape[0]))
+            
         """
         ## Define the targets (labels)
         
@@ -159,23 +166,26 @@ if __name__ == '__main__':
         """
         
         # Define the targets (labels) as PTTEND, PUTEND, and PVTEND.
+        # NOTE only using a single target variable for now until we can work out 
+        # how to instead use all three at once (perhaps as a list or 2-D array, 
+        # i.e. [PTTEND_timeseries, PUTEND_timeseries, PVTEND_timeseries])
         
-        # Remove all non-target variables and unrelated coordinate variables
-        # from the DataSet, in order to trim the memory footprint.
-        target_vars = ['PTTEND', 'PUTEND', 'PVTEND']
+        # Remove all non-target variables dataset.
+        target_vars = ['PTTEND']
+        #target_vars = ['PTTEND', 'PUTEND', 'PVTEND']
         for var in data_h1.variables:
             if var not in target_vars:
                 data_h1 = data_h1.drop(var)
-        targets = data_h1
-        
+
         # Confirm the compatability of our features and targets datasets,
         # in terms of dimensions and coordinates.
-        if features.dims != targets.dims:
+        if data_h0.dims != data_h1.dims:
             print("WARNING: Unequal dimensions")
         else:
-            for coord in features.coords:
-                if not (features.coords[coord] == targets.coords[coord]).all():
-                    print("WARNING: Unequal {} coordinates".format(coord))
+            for var_h0 in data_h0.variables:
+                for var_h1 in data_h1.variables:
+                    if data_h0[var_h0].values.shape != data_h1[var_h1].values.shape:
+                        print("WARNING: Unequal shapes for feature {} and target {}".format(var_h0, var_h1))
         
         """
         ## Split the data into training, validation, and testing datasets
@@ -189,19 +199,18 @@ if __name__ == '__main__':
         starting at the second longitude to get 25% of the dataset for 
         validation, and every fourth longitude starting at the fourth
         longitude to get 25% of the dataset for testing.
-        """
+        """        
+        lon_range_training = list(range(0, data_h0.dims['lon'], 2))
+        lon_range_validation = list(range(1, data_h0.dims['lon'], 4))
+        lon_range_testing = list(range(3, data_h0.dims['lon'], 4))
         
-        lon_range_training = list(range(0, features.dims['lon'], 2))
-        lon_range_validation = list(range(1, features.dims['lon'], 4))
-        lon_range_testing = list(range(3, features.dims['lon'], 4))
+        features_training = data_h0.isel(lon=lon_range_training)
+        features_validation = data_h0.isel(lon=lon_range_validation)
+        features_testing = data_h0.isel(lon=lon_range_testing)
         
-        features_training = features.isel(lon=lon_range_training)
-        features_validation = features.isel(lon=lon_range_validation)
-        features_testing = features.isel(lon=lon_range_testing)
-        
-        targets_training = targets.isel(lon=lon_range_training)
-        targets_validation = targets.isel(lon=lon_range_validation)
-        targets_testing = targets.isel(lon=lon_range_testing)
+        targets_training = data_h1.isel(lon=lon_range_training)
+        targets_validation = data_h1.isel(lon=lon_range_validation)
+        targets_testing = data_h1.isel(lon=lon_range_testing)
         
         """
         ## Create the neural network
