@@ -178,13 +178,13 @@ if __name__ == '__main__':
                 data_h1 = data_h1.drop(var)
 
         # Confirm the compatability of our features and targets datasets,
-        # in terms of dimensions and coordinates.
+        # in terms of dimensions and variable array shapes.
         if data_h0.dims != data_h1.dims:
             print("WARNING: Unequal dimensions")
         else:
             for var_h0 in data_h0.variables:
                 for var_h1 in data_h1.variables:
-                    if data_h0[var_h0].values.shape != data_h1[var_h1].values.shape:
+                    Sif data_h0[var_h0].dims != data_h1[var_h1].dims:
                         print("WARNING: Unequal shapes for feature {} and target {}".format(var_h0, var_h1))
         
         """
