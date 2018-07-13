@@ -63,8 +63,11 @@ def get_input(features_ds,
     # Perform the same for the target dataset, which we assume contains a single
     # variable with the same initial shape as the feature dataset's variables.
     targets = {}
-    var = targets_ds.variables[0]
-    targets[var] = var.values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
+    var = list(targets_ds.variables.items())[0][0]
+    targets[var] = targets_ds[var].values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
+
+    # Create a targets array from the target variable.
+    targets = targets_ds[var].values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
     
     # Construct a TensorFlow Dataset, and configure batching/repeating.
     ds = Dataset.from_tensor_slices((features, targets)) # warning: 2GB limit
@@ -208,6 +211,10 @@ if __name__ == '__main__':
         features_validation = data_h0.isel(lon=lon_range_validation)
         features_testing = data_h0.isel(lon=lon_range_testing)
         
+        print("Features train length: {}".format(features_training['T'].values.size / 720))
+        print("Features valid length: {}".format(features_validation['T'].values.size / 720))
+        print("Features test length:  {}".format(features_testing['T'].values.size / 720))
+        
         targets_training = data_h1.isel(lon=lon_range_training)
         targets_validation = data_h1.isel(lon=lon_range_validation)
         targets_testing = data_h1.isel(lon=lon_range_testing)
@@ -254,7 +261,8 @@ if __name__ == '__main__':
         # Instantiate the neural network.
         dnn_regressor = tf.estimator.DNNRegressor(feature_columns=feature_columns,
                                                   hidden_units=hidden_units,
-                                                  optimizer=gd_optimizer)
+                                                  optimizer=gd_optimizer,
+                                                  label_dimension=data_h1.dims['time'])
         
         # Create input functions. Wrap get_input() in a lambda so we 
         # can pass in features and targets as arguments.
