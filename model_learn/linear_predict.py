@@ -17,10 +17,10 @@ logging.basicConfig(level=logging.INFO,
 _logger = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------
-def extract_train_test(ds_features,
-                       ds_targets,
-                       lev,
-                       test_ratio=0.25):
+def _extract_train_test(ds_features,
+                        ds_targets,
+                        lev,
+                        test_ratio=0.25):
     
     # put feature variables into a Pandas DataFrame
     ps = pd.Series(ds_features['PS'][:, :, :].flatten())
@@ -83,10 +83,13 @@ if __name__ == '__main__':
             # loop over all elevations, in order to keep memory footprint low
             for lev in range(len(ds_features['lev'])):
         
+                _logger.info("Processing for elevation {}".format(lev))
+                
                 # get training and testing features and targets datasets
-                x_train, x_test, y_train, y_test = extract_train_test(ds_features,
-                                                                      ds_targets,
-                                                                      lev)
+                x_train, x_test, y_train, y_test = \
+                    _extract_train_test(ds_features,
+                                        ds_targets,
+                                        lev)
                 
                 # train the model
                 linear_regressor = linear_regressor.fit(x_train, y_train)
@@ -104,6 +107,9 @@ if __name__ == '__main__':
                 # Add the loss metrics from this period to our list.
                 rmse_training.append(rmse_train)
                 rmse_testing.append(rmse_test)
+                
+                _logger.info("  RMSE (train): {}".format(rmse_train))
+                _logger.info("  RMSE (test):  {}".format(rmse_test))
                
         # Output a graph of loss metrics over elevations.
         plt.ylabel("RMSE")
