@@ -67,6 +67,9 @@ if __name__ == '__main__':
         parser.add_argument("--netcdf_tendencies",
                             help="NetCDF file containing forcing variables",
                             required=True)
+        parser.add_argument('--plot', 
+                            help='Plot RMSE results per elevation level',
+                            action='store_true')
         args = parser.parse_args()
 
         # create a linear regression model
@@ -112,14 +115,15 @@ if __name__ == '__main__':
                 _logger.info("  RMSE (test):  {}".format(rmse_test))
                
         # Output a graph of loss metrics over elevations.
-        plt.ylabel("RMSE")
-        plt.xlabel("Elevation")
-        plt.title("Root Mean Squared Error vs. Elevations")
-        plt.tight_layout()
-        plt.plot(rmse_training, label="training")
-        plt.plot(rmse_testing, label="validation")
-        plt.legend()
-        plt.show()
+        if args.plot:
+            plt.ylabel("RMSE")
+            plt.xlabel("Elevation")
+            plt.title("Root Mean Squared Error vs. Elevations")
+            plt.tight_layout()
+            plt.plot(rmse_training, label="training")
+            plt.plot(rmse_testing, label="validation")
+            plt.legend()
+            plt.show()
         
         # report on the elapsed time
         end_datetime = datetime.now()
