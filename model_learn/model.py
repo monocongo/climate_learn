@@ -4,8 +4,10 @@ import logging
 
 import numpy as np
 import pandas as pd
-from sklearn import linear_model, neighbors
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsRegressor
 import xarray as xr
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -29,20 +31,27 @@ def train_test_linear(x_train, y_train, x_test, y_test):
     """
 
     # create and train a linear regression model
-    model = linear_model.LinearRegression()
+    model = LinearRegression()
     model.fit(x_train, y_train)
     score = model.score(x_test, y_test)
     _logger.info("LRM score: {result}".format(result=score))
 
     # create and train a ridge regression model
-    model = linear_model.Ridge()
+    model = Ridge()
     model.fit(x_train, y_train)
     score = model.score(x_test, y_test)
     _logger.info("Ridge score: {result}".format(result=score))
 
+    # create and train a random forest regression model
+    for trees in [3, 6, 10, 20]:
+        model = RandomForestRegressor(n_estimators=trees)
+        model.fit(x_train, y_train)
+        score = model.score(x_test, y_test)
+        _logger.info("Random Forest (trees={t}) score: {result}".format(t=trees, result=score))
+
     # create and train a K-neighbors regression model
     for k in [1, 3, 5, 10, 20]:
-        model = neighbors.KNeighborsRegressor(n_neighbors=5)
+        model = KNeighborsRegressor(n_neighbors=5)
         model.fit(x_train, y_train)
         score = model.score(x_test, y_test)
         _logger.info("K-Neighbors (k={k}) score: {result}".format(k=k, result=score))
@@ -124,14 +133,14 @@ if __name__ == '__main__':
         df_labels.index.rename('index', inplace=True)
 
         # split the data into training and testing datasets
-        x_train, x_test, y_train, y_test = train_test_split(df_features,
+        train_x, test_x, train_y, test_y = train_test_split(df_features,
                                                             df_labels,
                                                             test_size=0.25,
                                                             random_state=4)
 
         # perform modeling using linear regression models
         _logger.info("Model results for PS, T, U, and V")
-        train_test_linear(x_train, y_train, x_test, y_test)
+        train_test_linear(train_x, train_y, test_x, test_y)
 
         # add the non-linear forcing mechanism variables
         df_features['PRECL'] = pd.Series(ds_features.variables['PRECL'].values[:, :, :].flatten())
@@ -139,16 +148,26 @@ if __name__ == '__main__':
         df_labels['PTEQ'] = pd.Series(ds_labels.variables['PTEQ'].values[:, 0, :, :].flatten())
 
         # split the data into training and testing datasets
-        x_train, x_test, y_train, y_test = train_test_split(df_features,
+        train_x, test_x, train_y, test_y = train_test_split(df_features,
                                                             df_labels,
                                                             test_size=0.25,
                                                             random_state=4)
 
         # perform modeling using linear regression models
         _logger.info("Model results for PS, T, U, V, PRECL, and Q")
-        train_test_linear(x_train, y_train, x_test, y_test)
+        train_test_linear(train_x, train_y, test_x, test_y)
 
-except Exception as ex:
+        # trim the DataFrames down to only the non-linear forcing mechanism variables
+        df_features = df_features['PRECL', 'Q']
+        df_labels = df_labels['PTEQ']
+
+        # split the data into training and testing datasets
+        train_x, test_x, train_y, test_y = train_test_split(df_features,
+                                                            df_labels,
+                                                            test_size=0.25,
+                                                            random_state=4)
+
+    except Exception as ex:
 
         _logger.exception('Failed to complete', exc_info=True)
         raise
