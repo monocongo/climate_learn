@@ -4,10 +4,11 @@ import logging
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import AdaBoostRegressor, BaggingRegressor, ExtraTreesRegressor, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsRegressor
+from sklearn.svm import SVR
 import xarray as xr
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -19,9 +20,12 @@ _logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def train_test_linear(x_train, y_train, x_test, y_test):
+def train_test_linear(x_train,
+                      y_train,
+                      x_test,
+                      y_test):
     """
-    Train and test linear regression models using train/test splits of datasets, and log/report scores.
+    Train and test a number of regression models using a train/test split of single dataset, and log/report scores.
 
     :param x_train:
     :param y_train:
@@ -43,7 +47,7 @@ def train_test_linear(x_train, y_train, x_test, y_test):
     _logger.info("Ridge score: {result}".format(result=score))
 
     # create and train a random forest regression model
-    for trees in [3, 6, 10, 20]:
+    for trees in [3, 10, 20, 100, 250]:
         model = RandomForestRegressor(n_estimators=trees)
         model.fit(x_train, y_train)
         score = model.score(x_test, y_test)
@@ -51,10 +55,51 @@ def train_test_linear(x_train, y_train, x_test, y_test):
 
     # create and train a K-neighbors regression model
     for k in [1, 3, 5, 10, 20]:
-        model = KNeighborsRegressor(n_neighbors=5)
+        model = KNeighborsRegressor(n_neighbors=k)
         model.fit(x_train, y_train)
         score = model.score(x_test, y_test)
         _logger.info("K-Neighbors (k={k}) score: {result}".format(k=k, result=score))
+
+    # # create and train an Ada boost regression model, trying various estimators and learning rate parameters
+    # for estimators in [1, 3, 5, 10, 20]:
+    #     for rate in [0.01, 0.1, 1, 5, 12]:
+    #         model = AdaBoostRegressor(n_estimators=estimators, learning_rate=rate)
+    #         model.fit(x_train, y_train)
+    #         score = model.score(x_test, y_test)
+    #         _logger.info("Ada Boost (estimators={n}, learning rate={r}) score: {result}".format(n=estimators,
+    #                                                                                             r=rate,
+    #                                                                                             result=score))
+
+    # # create and train a bagging regression model
+    # model = BaggingRegressor()
+    # model.fit(x_train, y_train)
+    # score = model.score(x_test, y_test)
+    # _logger.info("Bagging score: {result}".format(result=score))
+
+    # create and train an extra trees regression model
+    for trees in [3, 6, 10, 20]:
+        model = ExtraTreesRegressor(n_estimators=trees)
+        model.fit(x_train, y_train)
+        score = model.score(x_test, y_test)
+        _logger.info("Extra Trees (trees={t}) score: {result}".format(t=trees, result=score))
+
+    # create and train a support vector regression model with an linear kernel
+    model = SVR(kernel='linear', C=1e3)
+    model.fit(x_train.flatten(), y_train.flatten())
+    score = model.score(x_test, y_test)
+    _logger.info("SVR (linear) score: {result}".format(result=score))
+
+    # create and train a support vector regression model with a polynomial kernel
+    model = SVR(kernel='poly', C=1e3, degree=2)
+    model.fit(x_train, y_train)
+    score = model.score(x_test, y_test)
+    _logger.info("SVR (polynomial) score: {result}".format(result=score))
+
+    # create and train a support vector regression model with an RBF kernel
+    model = SVR(kernel='rbf', C=1e3, gamma=0.1)
+    model.fit(x_train, y_train)
+    score = model.score(x_test, y_test)
+    _logger.info("SVR (RBF) score: {result}".format(result=score))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
