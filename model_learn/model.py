@@ -17,6 +17,38 @@ _logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+def train_test_linear(x_train, y_train, x_test, y_test):
+    """
+    Train and test linear regression models using train/test splits of datasets, and log/report scores.
+
+    :param x_train:
+    :param y_train:
+    :param x_test:
+    :param y_test:
+    :return: None
+    """
+
+    # create and train a linear regression model
+    model = linear_model.LinearRegression()
+    model.fit(x_train, y_train)
+    score = model.score(x_test, y_test)
+    _logger.info("LRM score: {result}".format(result=score))
+
+    # create and train a ridge regression model
+    model = linear_model.Ridge()
+    model.fit(x_train, y_train)
+    score = model.score(x_test, y_test)
+    _logger.info("Ridge score: {result}".format(result=score))
+
+    # create and train a K-neighbors regression model
+    for k in [1, 3, 5, 10, 20]:
+        model = neighbors.KNeighborsRegressor(n_neighbors=5)
+        model.fit(x_train, y_train)
+        score = model.score(x_test, y_test)
+        _logger.info("K-Neighbors (k={k}) score: {result}".format(k=k, result=score))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 def extract_timestamps(ds,
                        initial_year,
                        initial_month,
@@ -97,26 +129,26 @@ if __name__ == '__main__':
                                                             test_size=0.25,
                                                             random_state=4)
 
-        # create and train a linear regression model
-        model = linear_model.LinearRegression()
-        model.fit(x_train, y_train)
-        score = model.score(x_test, y_test)
-        _logger.info("LRM score: {result}".format(result=score))
+        # perform modeling using linear regression models
+        _logger.info("Model results for PS, T, U, and V")
+        train_test_linear(x_train, y_train, x_test, y_test)
 
-        # create and train a ridge regression model
-        model = linear_model.Ridge()
-        model.fit(x_train, y_train)
-        score = model.score(x_test, y_test)
-        _logger.info("Ridge score: {result}".format(result=score))
+        # add the non-linear forcing mechanism variables
+        df_features['PRECL'] = pd.Series(ds_features.variables['PRECL'].values[:, :, :].flatten())
+        df_features['Q'] = pd.Series(ds_features.variables['Q'].values[:, :, :].flatten())
+        df_labels['PTEQ'] = pd.Series(ds_labels.variables['PTEQ'].values[:, 0, :, :].flatten())
 
-        # create and train a K-neighbors regression model
-        for k in [1, 3, 5, 10, 20]:
-            model = neighbors.KNeighborsRegressor(n_neighbors = 5)
-            model.fit(x_train, y_train)
-            score = model.score(x_test, y_test)
-            _logger.info("K-Neighbors (k={k}) score: {result}".format(k=k, result=score))
+        # split the data into training and testing datasets
+        x_train, x_test, y_train, y_test = train_test_split(df_features,
+                                                            df_labels,
+                                                            test_size=0.25,
+                                                            random_state=4)
 
-    except Exception as ex:
+        # perform modeling using linear regression models
+        _logger.info("Model results for PS, T, U, V, PRECL, and Q")
+        train_test_linear(x_train, y_train, x_test, y_test)
+
+except Exception as ex:
 
         _logger.exception('Failed to complete', exc_info=True)
         raise
