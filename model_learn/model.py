@@ -4,9 +4,9 @@ import logging
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import AdaBoostRegressor, BaggingRegressor, ExtraTreesRegressor, RandomForestRegressor
+from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import ParameterGrid, train_test_split
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
 import xarray as xr
@@ -20,12 +20,12 @@ _logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def train_test_linear(x_train,
-                      y_train,
-                      x_test,
-                      y_test):
+def train_test_regression_linear(x_train,
+                                 y_train,
+                                 x_test,
+                                 y_test):
     """
-    Train and test a number of regression models using a train/test split of single dataset, and log/report scores.
+    Train and test using the linear regression model using a train/test split of single dataset.
 
     :param x_train:
     :param y_train:
@@ -34,17 +34,85 @@ def train_test_linear(x_train,
     :return: None
     """
 
+    # a dictionary of model names to scores we'll populate and return
+    model_scores = {}
+
+    # create a parameter grid we'll use to parameterize the model at each iteration
+    param_grid = ParameterGrid({'fit_intercept': [True, False], 'normalize': [True, False]})
+
+    # iterate over each model parameterization
+    for params in param_grid:
+        model = LinearRegression(**params)
+        model.fit(x_train, y_train)
+        score = model.score(x_test, y_test)
+        model_scores[score] = params
+
+    return model_scores
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def train_test_regression_ridge(x_train,
+                                y_train,
+                                x_test,
+                                y_test):
+    """
+    Train and test using the ridge regression model using a train/test split of single dataset.
+
+    :param x_train:
+    :param y_train:
+    :param x_test:
+    :param y_test:
+    :return: None
+    """
+
+    # a dictionary of model scores to parameters that we'll populate and return
+    model_scores = {}
+
+    # create a parameter grid we'll use to parameterize the model at each iteration
+    alphas = [0.25, 0.5, 1.0, 2.5, 5, 10]
+    max_iterations = [None, 1, 2, 5, 10, 50, 100, 1000, 100000]
+    tolerances = [0.00001, 0.001, 0.01, 0.1, 1, 2, 5, 10]
+    solvers = ['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga']
+    param_grid = ParameterGrid({'alpha': alphas, 'max_iter': max_iterations, 'tol': tolerances, "solver": solvers})
+
+    # iterate over each model parameterization
+    for params in param_grid:
+        model = Ridge(**params)
+        model.fit(x_train, y_train)
+        score = model.score(x_test, y_test)
+        model_scores[score] = params
+
+    return model_scores
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def train_test_regression(x_train,
+                          y_train,
+                          x_test,
+                          y_test):
+    """
+    Train and test a number of regression models using a train/test split of single dataset, and log/report scores.
+    Each regression model used will use its default initialization parameters.
+
+    :param x_train:
+    :param y_train:
+    :param x_test:
+    :param y_test:
+    :return: None
+    """
+
+    # a dictionary of model names to scores we'll populate and return
+    model_scores = {}
+
     # create and train a linear regression model
     model = LinearRegression()
     model.fit(x_train, y_train)
-    score = model.score(x_test, y_test)
-    _logger.info("LRM score: {result}".format(result=score))
+    model_scores["LinearRegression"] = model.score(x_test, y_test)
 
     # create and train a ridge regression model
     model = Ridge()
     model.fit(x_train, y_train)
-    score = model.score(x_test, y_test)
-    _logger.info("Ridge score: {result}".format(result=score))
+    model_scores["Ridge"] = model.score(x_test, y_test)
 
     # create and train a random forest regression model
     for trees in [3, 10, 20, 100, 250]:
@@ -107,6 +175,14 @@ def extract_timestamps(ds,
                        initial_year,
                        initial_month,
                        initial_day):
+    """
+
+    :param ds:
+    :param initial_year:
+    :param initial_month:
+    :param initial_day:
+    :return:
+    """
 
     # Cook up an initial datetime object based on our specified initial date.
     initial = datetime(initial_year, initial_month, initial_day)
@@ -119,6 +195,102 @@ def extract_timestamps(ds,
 
     # Put the array into a Series and return it.
     return pd.Series(datetimes)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def pull_vars_into_dataframe(dataset,
+                             variables,
+                             level):
+    """
+    Create a pandas DataFrame from variables of an xarray DataSet.
+
+    :param dataset:
+    :param variables:
+    :param level:
+    :return:
+    """
+
+    # the dataframe we'll populate and return
+    df = pd.DataFrame()
+
+    # loop over each variable, adding each into the dataframe
+    for var in variables:
+
+        # if we have (time, lev, lat, lon), then use level parameter
+        dimensions = dataset.variables[var].dims
+        if dimensions == ('time', 'lev', 'lat', 'lon'):
+            series = pd.Series(dataset.variables[var].values[:, level, :, :].flatten())
+        elif dimensions == ('time', 'lat', 'lon'):
+            series = pd.Series(dataset.variables['PS'].values[:, :, :].flatten())
+        else:
+            raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
+
+        # add the series into the dataframe
+        df[var] = series
+
+    # make sure we have a generic index name
+    df.index.rename('index', inplace=True)
+
+    return df
+
+# ----------------------------------------------------------------------------------------------------------------------
+def score_models(dataset_features,
+                 dataset_labels,
+                 feature_vars,
+                 label_vars):
+    """
+
+    :param dataset_features:
+    :param dataset_labels:
+    :param feature_vars:
+    :param label_vars:
+    :return:
+    """
+
+    # we assume each variable has multiple levels, and we loop over each
+    for lev in range(dataset_features.lev.size):
+
+        # get all features into a dataframe for this level
+        df_features = pull_vars_into_dataframe(dataset_features,
+                                               feature_vars,
+                                               level=lev)
+
+        # train/test for each label at this level
+        for label in label_vars:
+
+            # get the label data for this level into a dataframe
+            df_labels = pull_vars_into_dataframe(dataset_labels,
+                                                 [label],
+                                                 level=lev)
+
+            # split into train/test datasets
+            train_x, test_x, train_y, test_y = train_test_split(df_features,
+                                                                df_labels,
+                                                                test_size=0.25,
+                                                                random_state=4)
+
+            # for this group of features/label perform some training/tests using various regression models
+            _logger.info("Model results for features: {fs}  and label: {lbl} at level {l}".format(fs=feature_vars,
+                                                                                                  lbl=label,
+                                                                                                  l=lev))
+
+            # score the LinearRegression model using various parameters
+            score_params = train_test_regression_linear(train_x, train_y, test_x, test_y)
+
+            best_score = np.max(np.array(list(score_params.keys())))
+            best_param_set = score_params[best_score]
+            print("LinearRegression")
+            print("    Best parameter set: {params}".format(params=best_param_set))
+            print("    Best score: {score}".format(score=best_score))
+
+            # score the Ridge model using various parameters
+            score_params = train_test_regression_ridge(train_x, train_y, test_x, test_y)
+
+            best_score = np.max(np.array(score_params.keys()))
+            best_param_set = score_params[best_score]
+            print("Ridge")
+            print("    Best parameter set: {params}".format(params=best_param_set))
+            print("    Best score: {score}".format(score=best_score))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -146,6 +318,7 @@ if __name__ == '__main__':
         ds_labels = xr.open_mfdataset(args.input_tendencies)
 
         # confirm that we have datasets that match on the time dimension/coordinate
+        # noinspection PyUnresolvedReferences
         if (ds_features.variables['time'].values != ds_labels.variables['time'].values).any():
             _logger.info('ERROR: Non-matching time values')
         else:
@@ -157,60 +330,29 @@ if __name__ == '__main__':
         # init_day = 27
         # timestamps = extract_timestamps(ds_features, init_year, init_month, init_day)
 
-        # put features dataset values into a pandas DataFrame
-        ps = pd.Series(ds_features.variables['PS'].values[:, :, :].flatten())
-        t = pd.Series(ds_features.variables['T'].values[:, 0, :, :].flatten())
-        u = pd.Series(ds_features.variables['U'].values[:, 0, :, :].flatten())
-        v = pd.Series(ds_features.variables['V'].values[:, 0, :, :].flatten())
-        df_features = pd.DataFrame({'PS': ps,
-                                    'T': t,
-                                    'U': u,
-                                    'V': v})
-        df_features.index.rename('index', inplace=True)
+        # train/fit/score models using the dry features and corresponding labels
+        features = ['PS', 'T', 'U', 'V']
+        labels = ['PTTEND', 'PUTEND', 'PVTEND']
+        score_models(ds_features,
+                     ds_labels,
+                     features,
+                     labels)
 
-        # put labels dataset values into a pandas DataFrame
-        pttend = pd.Series(ds_labels.variables['PTTEND'].values[:, 0, :, :].flatten())
-        putend = pd.Series(ds_labels.variables['PUTEND'].values[:, 0, :, :].flatten())
-        pvtend = pd.Series(ds_labels.variables['PVTEND'].values[:, 0, :, :].flatten())
-        df_labels = pd.DataFrame({'PTTEND': pttend,
-                                  'PUTEND': putend,
-                                  'PVTEND': pvtend})
-        df_labels.index.rename('index', inplace=True)
+        # train/fit/score models using the moist features and corresponding labels
+        features = ['PRECL', 'Q']
+        labels = ['PTEQ']
+        score_models(ds_features,
+                     ds_labels,
+                     features,
+                     labels)
 
-        # split the data into training and testing datasets
-        train_x, test_x, train_y, test_y = train_test_split(df_features,
-                                                            df_labels,
-                                                            test_size=0.25,
-                                                            random_state=4)
-
-        # perform modeling using linear regression models
-        _logger.info("Model results for PS, T, U, and V")
-        train_test_linear(train_x, train_y, test_x, test_y)
-
-        # add the non-linear forcing mechanism variables
-        df_features['PRECL'] = pd.Series(ds_features.variables['PRECL'].values[:, :, :].flatten())
-        df_features['Q'] = pd.Series(ds_features.variables['Q'].values[:, :, :].flatten())
-        df_labels['PTEQ'] = pd.Series(ds_labels.variables['PTEQ'].values[:, 0, :, :].flatten())
-
-        # split the data into training and testing datasets
-        train_x, test_x, train_y, test_y = train_test_split(df_features,
-                                                            df_labels,
-                                                            test_size=0.25,
-                                                            random_state=4)
-
-        # perform modeling using linear regression models
-        _logger.info("Model results for PS, T, U, V, PRECL, and Q")
-        train_test_linear(train_x, train_y, test_x, test_y)
-
-        # trim the DataFrames down to only the non-linear forcing mechanism variables
-        df_features = df_features['PRECL', 'Q']
-        df_labels = df_labels['PTEQ']
-
-        # split the data into training and testing datasets
-        train_x, test_x, train_y, test_y = train_test_split(df_features,
-                                                            df_labels,
-                                                            test_size=0.25,
-                                                            random_state=4)
+        # train/fit/score models using the dry and moist features and the moist labels
+        features = ['PS', 'T', 'U', 'V', 'PRECL', 'Q']
+        labels = ['PTEQ']
+        score_models(ds_features,
+                     ds_labels,
+                     features,
+                     labels)
 
     except Exception as ex:
 
