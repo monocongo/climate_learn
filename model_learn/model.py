@@ -277,7 +277,7 @@ def pull_vars_into_dataframe(dataset,
         if dimensions == ('time', 'lev', 'lat', 'lon'):
             series = pd.Series(dataset.variables[var].values[:, level, :, :].flatten())
         elif dimensions == ('time', 'lat', 'lon'):
-            series = pd.Series(dataset.variables['PS'].values[:, :, :].flatten())
+            series = pd.Series(dataset.variables[var].values[:, :, :].flatten())
         else:
             raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
 
@@ -383,7 +383,6 @@ if __name__ == '__main__':
         ds_labels = xr.open_mfdataset(args.input_tendencies)
 
         # confirm that we have datasets that match on the time dimension/coordinate
-        # noinspection PyUnresolvedReferences
         if (ds_features.variables['time'].values != ds_labels.variables['time'].values).any():
             _logger.info('ERROR: Non-matching time values')
         else:
@@ -395,29 +394,29 @@ if __name__ == '__main__':
         # init_day = 27
         # timestamps = extract_timestamps(ds_features, init_year, init_month, init_day)
 
-        # train/fit/score models using the dry features and corresponding labels
-        features = ['PS', 'T', 'U', 'V']
-        labels = ['PTTEND', 'PUTEND', 'PVTEND']
-        score_models(ds_features,
-                     ds_labels,
-                     features,
-                     labels)
+        # # train/fit/score models using the dry features and corresponding labels
+        # features = ['PS', 'T', 'U', 'V']
+        # labels = ['PTTEND', 'PUTEND', 'PVTEND']
+        # score_models(ds_features,
+        #              ds_labels,
+        #              features,
+        #              labels)
 
         # train/fit/score models using the moist features and corresponding labels
         features = ['PRECL', 'Q']
-        labels = ['PTEQ']
+        labels = ['SHFLX']
         score_models(ds_features,
                      ds_labels,
                      features,
                      labels)
 
-        # train/fit/score models using the dry and moist features and the moist labels
-        features = ['PS', 'T', 'U', 'V', 'PRECL', 'Q']
-        labels = ['PTEQ']
-        score_models(ds_features,
-                     ds_labels,
-                     features,
-                     labels)
+        # # train/fit/score models using the dry and moist features and the moist labels
+        # features = ['PS', 'T', 'U', 'V', 'PRECL', 'Q']
+        # labels = ['SHFLX']
+        # score_models(ds_features,
+        #              ds_labels,
+        #              features,
+        #              labels)
 
     except Exception as ex:
 
