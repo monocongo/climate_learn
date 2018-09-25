@@ -382,11 +382,15 @@ if __name__ == '__main__':
         ds_features = xr.open_mfdataset(args.input_flows)
         ds_labels = xr.open_mfdataset(args.input_tendencies)
 
-        # confirm that we have datasets that match on the time dimension/coordinate
+        # confirm that we have datasets that match on the time, lev, lat, and lon dimension/coordinate
         if (ds_features.variables['time'].values != ds_labels.variables['time'].values).any():
-            _logger.info('ERROR: Non-matching time values')
-        else:
-            _logger.info("OK: time values match as expected")
+            raise ValueError('Non-matching time values between feature and label datasets')
+        if (ds_features.variables['lev'].values != ds_labels.variables['lev'].values).any():
+            raise ValueError('Non-matching level values between feature and label datasets')
+        if (ds_features.variables['lat'].values != ds_labels.variables['lat'].values).any():
+            raise ValueError('Non-matching lat values between feature and label datasets')
+        if (ds_features.variables['lon'].values != ds_labels.variables['lon'].values).any():
+            raise ValueError('Non-matching lon values between feature and label datasets')
 
         # # TODO get initial year, month, and day from the datasets
         # init_year = 2000
