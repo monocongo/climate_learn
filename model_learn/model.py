@@ -256,13 +256,15 @@ def extract_timestamps(ds,
 # ----------------------------------------------------------------------------------------------------------------------
 def pull_vars_into_dataframe(dataset,
                              variables,
-                             level):
+                             level,
+                             hemisphere=None):
     """
     Create a pandas DataFrame from variables of an xarray DataSet.
 
     :param dataset:
     :param variables:
     :param level:
+    :param hemisphere: 'north', 'south', or None
     :return:
     """
 
@@ -275,7 +277,18 @@ def pull_vars_into_dataframe(dataset,
         # if we have (time, lev, lat, lon), then use level parameter
         dimensions = dataset.variables[var].dims
         if dimensions == ('time', 'lev', 'lat', 'lon'):
+
+            if hemisphere is None:
+                values = dataset.variables[var].values[:, level, :, :].flatten()
+            elif hemisphere == 'north':
+                values = dataset.variables[var].sel['lat' >= 0].values[:, level, :, :].flatten()
+            elif hemisphere == 'south':
+                values = dataset.variables[var].sel['lat' < 0].values[:, level, :, :].flatten()
+            else:
+                raise ValueError("Unsupported hemisphere argument: {hemi}".format(hemi=hemisphere))
+
             series = pd.Series(dataset.variables[var].values[:, level, :, :].flatten())
+
         elif dimensions == ('time', 'lat', 'lon'):
             series = pd.Series(dataset.variables[var].values[:, :, :].flatten())
         else:
@@ -289,11 +302,54 @@ def pull_vars_into_dataframe(dataset,
 
     return df
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+def train_test_hemispheres(ds_features,
+                           ds_labels,
+                           feature_vars,
+                           label_vars,
+                           level):
+    """
+    Split the features and labels datasets into train and test arrays, using the northern hemisphere
+    for training and the southern hemisphere for testing. Assumes a regular global grid with full
+    northern and southern hemispheres.
+
+    :param ds_features: xarray.DataSet
+    :param ds_labels: xarray.DataSet
+    :return:
+    """
+
+    # make DataFrame from features, using the northern hemisphere for training data
+    train_x = pull_vars_into_dataframe(ds_features,
+                                       feature_vars,
+                                       level,
+                                       hemisphere='north')
+
+    # make DataFrame from features, using the southern hemisphere for testing data
+    test_x = pull_vars_into_dataframe(ds_features,
+                                      feature_vars,
+                                      level,
+                                      hemisphere='south')
+
+    # make DataFrame from labels, using the northern hemisphere for training data
+    train_y = pull_vars_into_dataframe(ds_labels,
+                                       label_vars,
+                                       level,
+                                       hemisphere='north')
+
+    # make DataFrame from labels, using the southern hemisphere for testing data
+    test_y = pull_vars_into_dataframe(ds_labels,
+                                      label_vars,
+                                      level,
+                                      hemisphere='south')
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 def score_models(dataset_features,
                  dataset_labels,
                  feature_vars,
-                 label_vars):
+                 label_vars,
+                 split_on_hemispheres=False):
     """
 
     :param dataset_features:
@@ -306,24 +362,36 @@ def score_models(dataset_features,
     # we assume each variable has multiple levels, and we loop over each
     for lev in range(dataset_features.lev.size):
 
-        # get all features into a dataframe for this level
-        df_features = pull_vars_into_dataframe(dataset_features,
-                                               feature_vars,
-                                               level=lev)
+        # get all features into a dataframe for this level, if not splitting on hemispheres
+        if not split_on_hemispheres:
+
+            df_features = pull_vars_into_dataframe(dataset_features,
+                                                   feature_vars,
+                                                   level=lev)
 
         # train/test for each label at this level
         for label in label_vars:
 
-            # get the label data for this level into a dataframe
-            df_labels = pull_vars_into_dataframe(dataset_labels,
-                                                 [label],
-                                                 level=lev)
-
             # split into train/test datasets
-            train_x, test_x, train_y, test_y = train_test_split(df_features,
-                                                                df_labels,
-                                                                test_size=0.25,
-                                                                random_state=4)
+            if split_on_hemispheres:
+
+                train_x, test_x, train_y, test_y = train_test_hemispheres(dataset_features,
+                                                                          dataset_labels,
+                                                                          feature_vars,
+                                                                          label_vars,
+                                                                          level=lev)
+
+            else:
+
+                # get the label data for this level into a dataframe
+                df_labels = pull_vars_into_dataframe(dataset_labels,
+                                                     [label],
+                                                     level=lev)
+
+                train_x, test_x, train_y, test_y = train_test_split(df_features,
+                                                                    df_labels,
+                                                                    test_size=0.25,
+                                                                    random_state=4)
 
             # for this group of features/label perform some training/tests using various regression models
             _logger.info("Model results for features: {fs}  and label: {lbl} at level {l}".format(fs=feature_vars,
@@ -412,7 +480,8 @@ if __name__ == '__main__':
         score_models(ds_features,
                      ds_labels,
                      features,
-                     labels)
+                     labels,
+                     split_on_hemispheres=True)
 
         # # train/fit/score models using the dry and moist features and the moist labels
         # features = ['PS', 'T', 'U', 'V', 'PRECL', 'Q']
