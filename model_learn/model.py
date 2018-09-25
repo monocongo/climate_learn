@@ -77,10 +77,66 @@ def train_test_regression_ridge(x_train,
 
     # iterate over each model parameterization
     for params in param_grid:
-        model = Ridge(**params)
-        model.fit(x_train, y_train)
-        score = model.score(x_test, y_test)
-        model_scores[score] = params
+        try:
+            model = Ridge(**params)
+            model.fit(x_train, y_train)
+            score = model.score(x_test, y_test)
+            model_scores[score] = params
+
+        except Exception as ex:
+            _logger.exception('Failed to complete', exc_info=True)
+            raise
+
+    return model_scores
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def train_test_regression_forest(x_train,
+                                 y_train,
+                                 x_test,
+                                 y_test):
+    """
+    Train and test using the random forest regression model using a train/test split of single dataset.
+
+    :param x_train:
+    :param y_train:
+    :param x_test:
+    :param y_test:
+    :return: None
+    """
+
+    # a dictionary of model scores to parameters that we'll populate and return
+    model_scores = {}
+
+    # create a parameter grid we'll use to parameterize the model at each iteration
+    estimators = [1, 2, 5, 10, 25, 100]
+    criteria = ['mse', 'mae']
+    max_features = [1, 2, 3, 0.5, 0.75, 'auto', 'sqrt', 'log2', None]
+    max_depths = [None, 1, 2, 3, 5, 10, 20]
+    min_samples_splits = [2, 5, 10, 0.1, 0.25, 0.5, 0.75]
+    min_samples_leafs = [1, 2, 5, 10, 0.1, 0.25, 0.5, 0.75]
+    bootstraps = [True, False]
+    n_jobs = [-1]   # run fit jobs in parallel across all cores
+    param_grid = ParameterGrid({'n_estimators': estimators,
+                                'criterion': criteria,
+                                'max_features': max_features,
+                                'max_depth': max_depths,
+                                'min_samples_split': min_samples_splits,
+                                'min_samples_leaf': min_samples_leafs,
+                                'bootstrap': bootstraps,
+                                'n_jobs': n_jobs})
+
+    # iterate over each model parameterization
+    for params in param_grid:
+        try:
+            model = Ridge(**params)
+            model.fit(x_train, y_train)
+            score = model.score(x_test, y_test)
+            model_scores[score] = params
+
+        except Exception as ex:
+            _logger.exception('Failed to complete', exc_info=True)
+            raise
 
     return model_scores
 
@@ -274,7 +330,7 @@ def score_models(dataset_features,
                                                                                                   lbl=label,
                                                                                                   l=lev))
 
-            # score the LinearRegression model using various parameters
+            # score the linear regression model using various parameters
             score_params = train_test_regression_linear(train_x, train_y, test_x, test_y)
 
             best_score = np.max(np.array(list(score_params.keys())))
@@ -283,12 +339,21 @@ def score_models(dataset_features,
             print("    Best parameter set: {params}".format(params=best_param_set))
             print("    Best score: {score}".format(score=best_score))
 
-            # score the Ridge model using various parameters
+            # score the ridge regression model using various parameters
             score_params = train_test_regression_ridge(train_x, train_y, test_x, test_y)
 
-            best_score = np.max(np.array(score_params.keys()))
+            best_score = np.max(np.array(list(score_params.keys())))
             best_param_set = score_params[best_score]
             print("Ridge")
+            print("    Best parameter set: {params}".format(params=best_param_set))
+            print("    Best score: {score}".format(score=best_score))
+
+            # score the random forest regression model using various parameters
+            score_params = train_test_regression_ridge(train_x, train_y, test_x, test_y)
+
+            best_score = np.max(np.array(list(score_params.keys())))
+            best_param_set = score_params[best_score]
+            print("Random Forest")
             print("    Best parameter set: {params}".format(params=best_param_set))
             print("    Best score: {score}".format(score=best_score))
 
