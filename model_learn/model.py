@@ -83,7 +83,7 @@ def train_test_regression_ridge(x_train,
             score = model.score(x_test, y_test)
             model_scores[score] = params
 
-        except Exception as ex:
+        except Exception:
             _logger.exception('Failed to complete', exc_info=True)
             raise
 
@@ -134,7 +134,7 @@ def train_test_regression_forest(x_train,
             score = model.score(x_test, y_test)
             model_scores[score] = params
 
-        except Exception as ex:
+        except Exception:
             _logger.exception('Failed to complete', exc_info=True)
             raise
 
@@ -261,9 +261,9 @@ def pull_vars_into_dataframe(dataset,
     """
     Create a pandas DataFrame from variables of an xarray DataSet.
 
-    :param dataset:
-    :param variables:
-    :param level:
+    :param dataset: xarray.DataSet
+    :param variables: list of variables to be extracted from the DataSet and included in the resulting DataFrame
+    :param level: the level index (all times, lats, and lons included at this indexed level)
     :param hemisphere: 'north', 'south', or None
     :return:
     """
@@ -271,28 +271,28 @@ def pull_vars_into_dataframe(dataset,
     # the dataframe we'll populate and return
     df = pd.DataFrame()
 
+    # slice the dataset down to a hemisphere, if specified
+    if hemisphere is not None:
+        if hemisphere == 'north':
+            dataset = dataset.sel(lat=(dataset.lat >= 0))
+        elif hemisphere == 'south':
+            dataset = dataset.sel(lat=(dataset.lat < 0))
+        else:
+            raise ValueError("Unsupported hemisphere argument: {hemi}".format(hemi=hemisphere))
+
     # loop over each variable, adding each into the dataframe
     for var in variables:
 
         # if we have (time, lev, lat, lon), then use level parameter
         dimensions = dataset.variables[var].dims
         if dimensions == ('time', 'lev', 'lat', 'lon'):
-
-            if hemisphere is None:
-                values = dataset.variables[var].values[:, level, :, :].flatten()
-            elif hemisphere == 'north':
-                values = dataset.variables[var].sel['lat' >= 0].values[:, level, :, :].flatten()
-            elif hemisphere == 'south':
-                values = dataset.variables[var].sel['lat' < 0].values[:, level, :, :].flatten()
-            else:
-                raise ValueError("Unsupported hemisphere argument: {hemi}".format(hemi=hemisphere))
-
-            series = pd.Series(dataset.variables[var].values[:, level, :, :].flatten())
-
+            values = dataset[var].values[:, level, :, :]
         elif dimensions == ('time', 'lat', 'lon'):
-            series = pd.Series(dataset.variables[var].values[:, :, :].flatten())
+            values = dataset[var].values[:, :, :]
         else:
             raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
+
+        series = pd.Series(values.flatten())
 
         # add the series into the dataframe
         df[var] = series
@@ -304,44 +304,49 @@ def pull_vars_into_dataframe(dataset,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def train_test_hemispheres(ds_features,
-                           ds_labels,
+def train_test_hemispheres(features_dataset,
+                           labels_dataset,
                            feature_vars,
                            label_vars,
-                           level):
+                           level_ix):
     """
     Split the features and labels datasets into train and test arrays, using the northern hemisphere
     for training and the southern hemisphere for testing. Assumes a regular global grid with full
     northern and southern hemispheres.
 
-    :param ds_features: xarray.DataSet
-    :param ds_labels: xarray.DataSet
+    :param features_dataset: xarray.DataSet
+    :param labels_dataset: xarray.DataSet
+    :param feature_vars: list of variables to include from the features DataSet
+    :param label_vars: list of variables to include from the labels DataSet
+    :param level_ix: level coordinate index, assumes a 'lev' coordinate for all specified feature and label variables
     :return:
     """
 
     # make DataFrame from features, using the northern hemisphere for training data
-    train_x = pull_vars_into_dataframe(ds_features,
+    train_x = pull_vars_into_dataframe(features_dataset,
                                        feature_vars,
-                                       level,
+                                       level_ix,
                                        hemisphere='north')
 
     # make DataFrame from features, using the southern hemisphere for testing data
-    test_x = pull_vars_into_dataframe(ds_features,
+    test_x = pull_vars_into_dataframe(features_dataset,
                                       feature_vars,
-                                      level,
+                                      level_ix,
                                       hemisphere='south')
 
     # make DataFrame from labels, using the northern hemisphere for training data
-    train_y = pull_vars_into_dataframe(ds_labels,
+    train_y = pull_vars_into_dataframe(labels_dataset,
                                        label_vars,
-                                       level,
+                                       level_ix,
                                        hemisphere='north')
 
     # make DataFrame from labels, using the southern hemisphere for testing data
-    test_y = pull_vars_into_dataframe(ds_labels,
+    test_y = pull_vars_into_dataframe(labels_dataset,
                                       label_vars,
-                                      level,
+                                      level_ix,
                                       hemisphere='south')
+
+    return train_x, test_x, train_y, test_y
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -356,6 +361,8 @@ def score_models(dataset_features,
     :param dataset_labels:
     :param feature_vars:
     :param label_vars:
+    :param split_on_hemispheres: if True then use the northern hemisphere as the training set and
+                the southern hemisphere as the testing dataset (50/50 split)
     :return:
     """
 
@@ -378,8 +385,8 @@ def score_models(dataset_features,
                 train_x, test_x, train_y, test_y = train_test_hemispheres(dataset_features,
                                                                           dataset_labels,
                                                                           feature_vars,
-                                                                          label_vars,
-                                                                          level=lev)
+                                                                          [label],
+                                                                          level_ix=lev)
 
             else:
 
@@ -417,7 +424,7 @@ def score_models(dataset_features,
             print("    Best score: {score}".format(score=best_score))
 
             # score the random forest regression model using various parameters
-            score_params = train_test_regression_ridge(train_x, train_y, test_x, test_y)
+            score_params = train_test_regression_forest(train_x, train_y, test_x, test_y)
 
             best_score = np.max(np.array(list(score_params.keys())))
             best_param_set = score_params[best_score]
@@ -491,7 +498,7 @@ if __name__ == '__main__':
         #              features,
         #              labels)
 
-    except Exception as ex:
+    except Exception:
 
         _logger.exception('Failed to complete', exc_info=True)
         raise
