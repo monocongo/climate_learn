@@ -162,10 +162,10 @@ if __name__ == '__main__':
             raise ValueError('Non-matching lon values between feature and label datasets')
 
         # get the shape of the 4-D array we'll use for the predicted variable(s) data array
-        size_time = ds_learn_features.time.size
-        size_lev = ds_learn_features.lev.size
-        size_lat = ds_learn_features.lat.size
-        size_lon = ds_learn_features.lon.size
+        size_time = ds_predict_features.time.size
+        size_lev = ds_predict_features.lev.size
+        size_lat = ds_predict_features.lat.size
+        size_lon = ds_predict_features.lon.size
         prediction = np.empty(dtype=float, shape=(size_time, size_lev, size_lat, size_lon))
 
         # define the model
@@ -193,8 +193,6 @@ if __name__ == '__main__':
             train_y_scaled = scaler_y.fit_transform(train_y)
             test_x_scaled = scaler_x.transform(test_x)
             test_y_scaled = scaler_y.transform(test_y)
-            # train_x_scaled, train_y_scaled = scaler.fit_transform(train_x, train_y)
-            # test_x_scaled, test_y_scaled = scaler.transform(test_x, test_y)
 
             # train the model for this level
             model.fit(train_x_scaled, train_y_scaled, epochs=4, shuffle=True, verbose=2)
@@ -209,13 +207,13 @@ if __name__ == '__main__':
             predict_x_scaled = scaler_x.transform(predict_x)
 
             # use the model to predict label values from new inputs
-            predict_y_scaled = model.predict(predict_x_scaled)[0][0]
+            predict_y_scaled = model.predict(predict_x_scaled)
 
             # unscale the data, using the same scaler as was used for training
             predict_y = scaler_y.inverse_transform(predict_y_scaled)
 
             # write the predicted values for the level into the predicted label's data array
-            prediction[:, lev, :, :] = np.reshape(predict_y, shape=(size_time, 1, size_lat, size_lon))
+            prediction[:, lev, :, :] = np.reshape(predict_y, newshape=(size_time, size_lat, size_lon))
 
         # copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
         ds_predict_labels = ds_predict_features.copy(data={labels[0]: prediction})
