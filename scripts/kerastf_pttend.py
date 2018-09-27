@@ -16,18 +16,6 @@ _logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-
-# ----------------------------------------------------------------------------------------------------------------------
 def pull_vars_into_dataframe(dataset,
                              variables,
                              level,
@@ -133,12 +121,20 @@ if __name__ == '__main__':
 
         # parse the command line arguments
         parser = argparse.ArgumentParser()
-        parser.add_argument("--input_flows",
-                            help="NetCDF file containing flow variables",
+        parser.add_argument("--learn_features",
+                            help="NetCDF files containing flow variables used to train/test the model",
                             nargs='*',
                             required=True)
-        parser.add_argument("--input_tendencies",
-                            help="NetCDF file containing time tendency forcing variables",
+        parser.add_argument("--learn_labels",
+                            help="NetCDF files containing time tendency forcing variables used to train/test the model",
+                            nargs='*',
+                            required=True)
+        parser.add_argument("--predict_features",
+                            help="NetCDF files containing flow variables used as prediction inputs",
+                            nargs='*',
+                            required=True)
+        parser.add_argument("--predict_labels",
+                            help="NetCDF file to contain predicted time tendency forcing variables",
                             nargs='*',
                             required=True)
         args = parser.parse_args()
@@ -148,20 +144,29 @@ if __name__ == '__main__':
         labels = ['PTTEND']
 
         # open the features (flows) and labels (tendencies) as xarray DataSets
-        ds_features = xr.open_mfdataset(paths=args.input_flows,
-                                        data_vars=features)
-        ds_labels = xr.open_mfdataset(paths=args.input_tendencies,
-                                      data_vars=labels)
+        ds_learn_features = xr.open_mfdataset(paths=args.learn_features,
+                                              data_vars=features)
+        ds_learn_labels = xr.open_mfdataset(paths=args.learn_labels,
+                                            data_vars=labels)
+        ds_predict_features = xr.open_mfdataset(paths=args.predict_features,
+                                                data_vars=features)
 
         # confirm that we have datasets that match on the time, lev, lat, and lon dimension/coordinate
-        if (ds_features.variables['time'].values != ds_labels.variables['time'].values).any():
+        if (ds_learn_features.variables['time'].values != ds_learn_labels.variables['time'].values).any():
             raise ValueError('Non-matching time values between feature and label datasets')
-        if (ds_features.variables['lev'].values != ds_labels.variables['lev'].values).any():
+        if (ds_learn_features.variables['lev'].values != ds_learn_labels.variables['lev'].values).any():
             raise ValueError('Non-matching level values between feature and label datasets')
-        if (ds_features.variables['lat'].values != ds_labels.variables['lat'].values).any():
+        if (ds_learn_features.variables['lat'].values != ds_learn_labels.variables['lat'].values).any():
             raise ValueError('Non-matching lat values between feature and label datasets')
-        if (ds_features.variables['lon'].values != ds_labels.variables['lon'].values).any():
+        if (ds_learn_features.variables['lon'].values != ds_learn_labels.variables['lon'].values).any():
             raise ValueError('Non-matching lon values between feature and label datasets')
+
+        # get the shape of the 4-D array we'll use for the predicted variable(s) data array
+        size_time = ds_learn_features.time.size
+        size_lev = ds_learn_features.lev.size
+        size_lat = ds_learn_features.lat.size
+        size_lon = ds_learn_features.lon.size
+        prediction = np.empty(dtype=float, shape=(size_time, size_lev, size_lat, size_lon))
 
         # define the model
         model = Sequential()
@@ -172,21 +177,22 @@ if __name__ == '__main__':
 
         # loop over each level, keeping a record of the error rate for each level, for later visualization
         level_error_rates = {}
-        for lev in range(ds_features.lev.size):
+        for lev in range(size_lev):
 
             # split the data into train/test datasets using a north/south 50/50 split
-            train_x, test_x, train_y, test_y = split_hemispheres(ds_features,
-                                                                 ds_labels,
+            train_x, test_x, train_y, test_y = split_hemispheres(ds_learn_features,
+                                                                 ds_learn_labels,
                                                                  features,
                                                                  labels,
                                                                  level_ix=lev)
 
             # scale the data into a small range since this will optimize the neural network's performance
-            scaler = MinMaxScaler(feature_range=(0, 1))
-            train_x_scaled = scaler.fit_transform(train_x)
-            train_y_scaled = scaler.fit_transform(train_y)
-            test_x_scaled = scaler.transform(test_x)
-            test_y_scaled = scaler.transform(test_y)
+            scaler_x = MinMaxScaler(feature_range=(0, 1))
+            scaler_y = MinMaxScaler(feature_range=(0, 1))
+            train_x_scaled = scaler_x.fit_transform(train_x)
+            train_y_scaled = scaler_y.fit_transform(train_y)
+            test_x_scaled = scaler_x.transform(test_x)
+            test_y_scaled = scaler_y.transform(test_y)
             # train_x_scaled, train_y_scaled = scaler.fit_transform(train_x, train_y)
             # test_x_scaled, test_y_scaled = scaler.transform(test_x, test_y)
 
@@ -194,7 +200,33 @@ if __name__ == '__main__':
             model.fit(train_x_scaled, train_y_scaled, epochs=4, shuffle=True, verbose=2)
 
             # evaluate the model's performance
-            level_error_rates[lev] = test_error_rate = model.evaluate(test_x_scaled, test_y_scaled, verbose=0)
+            level_error_rates[lev] = model.evaluate(test_x_scaled, test_y_scaled, verbose=0)
+
+            # get the new features from which we'll predict new label(s), using the same scaler as was used for training
+            predict_x = pull_vars_into_dataframe(ds_predict_features,
+                                                 features,
+                                                 lev)
+            predict_x_scaled = scaler_x.transform(predict_x)
+
+            # use the model to predict label values from new inputs
+            predict_y_scaled = model.predict(predict_x_scaled)[0][0]
+
+            # unscale the data, using the same scaler as was used for training
+            predict_y = scaler_y.inverse_transform(predict_y_scaled)
+
+            # write the predicted values for the level into the predicted label's data array
+            prediction[:, lev, :, :] = np.reshape(predict_y, shape=(size_time, 1, size_lat, size_lon))
+
+        # copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
+        ds_predict_labels = ds_predict_features.copy(data={labels[0]: prediction})
+
+        # remove all non-label variables from the dataset copy
+        for var in ds_predict_labels.variables:
+            if var not in labels:
+                ds_predict_features.drop(var)
+
+        # write the predicted label(s)' dataset as NetCDF
+        ds_predict_labels.to_netcdf(args.predict_labels)
 
         # placeholder for debugging steps
         pass
