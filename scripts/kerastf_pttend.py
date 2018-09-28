@@ -21,11 +21,11 @@ def pull_vars_into_dataframe(dataset,
                              level,
                              hemisphere=None):
     """
-    Create a pandas DataFrame from variables of an xarray DataSet.
+    Create a pandas DataFrame from the specified variables of an xarray DataSet.
 
     :param dataset: xarray.DataSet
     :param variables: list of variables to be extracted from the DataSet and included in the resulting DataFrame
-    :param level: the level index (all times, lats, and lons included at this indexed level)
+    :param level: the level index (all times, lats, and lons included from this indexed level)
     :param hemisphere: 'north', 'south', or None
     :return:
     """
@@ -66,11 +66,59 @@ def pull_vars_into_dataframe(dataset,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def split_hemispheres(features_dataset,
-                      labels_dataset,
-                      feature_vars,
-                      label_vars,
-                      level_ix):
+def pull_vars_into_array(dataset,
+                         variables,
+                         level,
+                         hemisphere=None):
+    """
+    Create a Numpy array from the specified variables of an xarray DataSet.
+
+    :param dataset: xarray.DataSet
+    :param variables: list of variables to be extracted from the DataSet and included in the resulting DataFrame
+    :param level: the level index (all times, lats, and lons included from this indexed level)
+    :param hemisphere: 'north', 'south', or None
+    :return: an array with shape (len(variables), ds.lat.size, ds.lon.size, ds.time.size) and dtype float
+    """
+
+    # slice the dataset down to a hemisphere, if specified
+    if hemisphere is not None:
+        if hemisphere == 'north':
+            dataset = dataset.sel(lat=(dataset.lat >= 0))
+        elif hemisphere == 'south':
+            dataset = dataset.sel(lat=(dataset.lat < 0))
+        else:
+            raise ValueError("Unsupported hemisphere argument: {hemi}".format(hemi=hemisphere))
+
+    # the array we'll populate and return
+    arr = np.empty(shape=[len(variables), dataset.lat.size, dataset.lon.size, dataset.time.size], dtype=float)
+
+    # loop over each variable, adding each into the dataframe
+    for index, var in enumerate(variables):
+
+        # if we have (time, lev, lat, lon), then use level parameter
+        dimensions = dataset.variables[var].dims
+        if dimensions == ('time', 'lev', 'lat', 'lon'):
+            values = dataset[var].values[:, level, :, :]
+        elif dimensions == ('time', 'lat', 'lon'):
+            values = dataset[var].values[:, :, :]
+        else:
+            raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
+
+        # reshape from ('time', 'lat', 'lon') to ('lat', 'lon', 'time')
+        values = np.moveaxis(values, 0, -1)
+
+        # add the values into the array at the variable's position
+        arr[index] = values
+
+    return arr
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def split_into_hemisphere_dfs(features_dataset,
+                              labels_dataset,
+                              feature_vars,
+                              label_vars,
+                              level_ix):
     """
     Split the features and labels datasets into train and test arrays, using the northern hemisphere
     for training and the southern hemisphere for testing. Assumes a regular global grid with full
@@ -112,6 +160,97 @@ def split_hemispheres(features_dataset,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+def split_into_hemisphere_arrays(features_dataset,
+                                 labels_dataset,
+                                 feature_vars,
+                                 label_vars,
+                                 level_ix):
+    """
+    Split the features and labels datasets into train and test arrays, using the northern hemisphere
+    for training and the southern hemisphere for testing. Assumes a regular global grid with full
+    northern and southern hemispheres.
+
+    :param features_dataset: xarray.DataSet
+    :param labels_dataset: xarray.DataSet
+    :param feature_vars: list of variables to include from the features DataSet
+    :param label_vars: list of variables to include from the labels DataSet
+    :param level_ix: level coordinate index, assumes a 'lev' coordinate for all specified feature and label variables
+    :return: numpy arrays with 4-D shape (vars, lons, lats, times)
+    """
+
+    # make array from features, using the northern hemisphere for training data
+    train_x = pull_vars_into_array(features_dataset,
+                                   feature_vars,
+                                   level_ix,
+                                   hemisphere='north')
+
+    # make array from features, using the southern hemisphere for testing data
+    test_x = pull_vars_into_array(features_dataset,
+                                  feature_vars,
+                                  level_ix,
+                                  hemisphere='south')
+
+    # make array from labels, using the northern hemisphere for training data
+    train_y = pull_vars_into_array(labels_dataset,
+                                   label_vars,
+                                   level_ix,
+                                   hemisphere='north')
+
+    # make array from labels, using the southern hemisphere for testing data
+    test_y = pull_vars_into_array(labels_dataset,
+                                  label_vars,
+                                  level_ix,
+                                  hemisphere='south')
+
+    return train_x, test_x, train_y, test_y
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def define_model_dense():
+
+    # define the model
+    model = Sequential()
+    model.add(Dense(50, input_dim=len(features), activation='relu'))
+    model.add(Dense(100, activation='relu'))
+    model.add(Dense(1))
+    model.compile(optimizer='adam', loss='mse')
+
+    return model
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def define_model_cnn_lstm(channels, lats, lons, times):
+    """
+    Create and return a model with CN and LSTM layers. Input data is
+    expected to have shape (channels, lats, lons, times).
+
+    :param channels: channel dimension of input 4-D array
+    :param lats: latitude dimension of input 4-D array
+    :param lons: longitude dimension of input 4-D array
+    :param times: time dimension of input 4-D array
+    :return: CNN-LSTM model appropriate to the expected input array
+    """
+    # define the CNN model layers, wrapping each CNN layer in a TimeDistributed layer
+    model = Sequential()
+    model.add(TimeDistributed(Cropping3D(data_format="channels_first")))
+    model.add(TimeDistributed(MaxPooling3D(data_format="channels_first")))
+    # model.add(TimeDistributed(Conv2D(filters=lats*lons,
+    #                                  kernel_size=(3, 3),
+    #                                  activation='relu',
+    #                                  input_shape=(channels, lats, lons, times))))
+    # model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+    model.add(TimeDistributed(Flatten()))
+
+    # add the LSTM layer, and final Dense layer
+    model.add(LSTM(units=times, activation='relu', stateful=True, return_sequences=True))
+    model.add(Dense(1))
+
+    model.compile(optimizer='adam', loss='mse')
+
+    return model
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     """
     This module is used to showcase ML modeling of the climate using scikit-learn, using NCAR CAM files as input.
@@ -135,6 +274,10 @@ if __name__ == '__main__':
                             required=True)
         parser.add_argument("--predict_labels",
                             help="NetCDF file to contain predicted time tendency forcing variables",
+                            required=True)
+        parser.add_argument("--model",
+                            help="Model type to use for prediction",
+                            choices=['cnnlstm', 'dense'],
                             required=True)
         args = parser.parse_args()
 
@@ -180,22 +323,43 @@ if __name__ == '__main__':
         prediction = np.empty(dtype=float, shape=(out_size_time, out_size_lev, out_size_lat, out_size_lon))
 
         # define the model
-        model = Sequential()
-        model.add(Dense(50, input_dim=len(features), activation='relu'))
-        model.add(Dense(100, activation='relu'))
-        model.add(Dense(1))
-        model.compile(optimizer='adam', loss='mse')
+        if args.model == 'dense':
+
+            model = define_model_dense()
+
+        elif args.model == 'cnnlstm':
+
+            model = define_model_cnn_lstm(len(features), out_size_lat, out_size_lon, out_size_time)
+
+        else:
+
+            raise ValueError("Invalid model argument: {m}".format(m=args.model))
 
         # loop over each level, keeping a record of the error rate for each level, for later visualization
         level_error_rates = {}
         for lev in range(out_size_lev):
 
-            # split the data into train/test datasets using a north/south 50/50 split
-            train_x, test_x, train_y, test_y = split_hemispheres(ds_learn_features,
-                                                                 ds_learn_labels,
-                                                                 features,
-                                                                 labels,
-                                                                 level_ix=lev)
+            if args.model == 'dense':
+
+                # split the data into train/test datasets using a north/south 50/50 split
+                train_x, test_x, train_y, test_y = split_into_hemisphere_dfs(ds_learn_features,
+                                                                             ds_learn_labels,
+                                                                             features,
+                                                                             labels,
+                                                                             level_ix=lev)
+
+            elif args.model == 'cnnlstm':
+
+                # split the data into train/test datasets using a north/south 50/50 split
+                train_x, test_x, train_y, test_y = split_into_hemisphere_arrays(ds_learn_features,
+                                                                                ds_learn_labels,
+                                                                                features,
+                                                                                labels,
+                                                                                level_ix=lev)
+
+            else:
+
+                raise ValueError("Invalid model argument: {m}".format(m=args.model))
 
             # scale the data into a small range since this will optimize the neural network's performance
             scaler_x = MinMaxScaler(feature_range=(0, 1))
@@ -206,7 +370,7 @@ if __name__ == '__main__':
             test_y_scaled = scaler_y.transform(test_y)
 
             # train the model for this level
-            model.fit(train_x_scaled, train_y_scaled, epochs=3, shuffle=True, verbose=2)
+            model.fit(train_x_scaled, train_y_scaled, epochs=2, shuffle=True, verbose=2)
 
             # get the new features from which we'll predict new label(s), using the same scaler as was used for training
             predict_x = pull_vars_into_dataframe(ds_predict_features,
