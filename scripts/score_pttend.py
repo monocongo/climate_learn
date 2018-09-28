@@ -1,14 +1,14 @@
 import argparse
 from datetime import datetime, timedelta
 import logging
+import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.model_selection import ParameterGrid, train_test_split
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.svm import SVR
 import xarray as xr
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -20,22 +20,70 @@ _logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def train_test_regression_linear(x_train,
-                                 y_train,
-                                 x_test,
-                                 y_test):
+def score_regression_kneighbors(x_train,
+                                y_train,
+                                x_test,
+                                y_test):
     """
     Train and test using the linear regression model using a train/test split of single dataset.
+    Returns the best score and corresponding parameter list.
 
     :param x_train:
     :param y_train:
     :param x_test:
     :param y_test:
-    :return: None
+    :return: best score (float) and corresponding list of parameters
     """
 
-    # a dictionary of model names to scores we'll populate and return
-    model_scores = {}
+    # the best score result for a fit and its corresponding a parameter set
+    best_score = sys.float_info.min
+    best_params = None
+
+    # create a parameter grid we'll use to parameterize the model at each iteration
+    neighbors = [1, 2, 3, 4, 5, 10, 15, 20, 25]
+    weights = ['uniform', 'distance']
+    algorithms = ['auto', 'ball_tree', 'kd_tree', 'brute']
+    leaf_sizes = [10, 20, 30, 40, 50, 75, 100]
+    powers = [1, 2]
+    jobs = [-1]   # -1 uses all processors
+    param_grid = ParameterGrid({'n_neighbors': neighbors,
+                                'weights': weights,
+                                'algorithm': algorithms,
+                                'leaf_size': leaf_sizes,
+                                'p': powers,
+                                'n_jobs': jobs})
+
+    # iterate over each model parameterization
+    for params in param_grid:
+        model = KNeighborsRegressor(**params)
+        model.fit(x_train, y_train)
+        score = model.score(x_test, y_test)
+        if score > best_score:
+            best_score = score
+            best_params = params
+
+    return best_score, best_params
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+def score_regression_linear(x_train,
+                            y_train,
+                            x_test,
+                            y_test):
+    """
+    Train and test using the linear regression model using a train/test split of single dataset.
+    Returns the best score and corresponding parameter list.
+
+    :param x_train:
+    :param y_train:
+    :param x_test:
+    :param y_test:
+    :return: best score (float) and corresponding list of parameters
+    """
+
+    # the best score result for a fit and its corresponding a parameter set
+    best_score = sys.float_info.min
+    best_params = None
 
     # create a parameter grid we'll use to parameterize the model at each iteration
     param_grid = ParameterGrid({'fit_intercept': [True, False], 'normalize': [True, False]})
@@ -45,35 +93,42 @@ def train_test_regression_linear(x_train,
         model = LinearRegression(**params)
         model.fit(x_train, y_train)
         score = model.score(x_test, y_test)
-        model_scores[score] = params
+        if score > best_score:
+            best_score = score
+            best_params = params
 
-    return model_scores
+    return best_score, best_params
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def train_test_regression_ridge(x_train,
-                                y_train,
-                                x_test,
-                                y_test):
+def score_regression_ridge(x_train,
+                           y_train,
+                           x_test,
+                           y_test):
     """
     Train and test using the ridge regression model using a train/test split of single dataset.
+    Returns the best score and corresponding parameter list.
 
     :param x_train:
     :param y_train:
     :param x_test:
     :param y_test:
-    :return: None
+    :return: best score (float) and corresponding list of parameters
     """
 
-    # a dictionary of model scores to parameters that we'll populate and return
-    model_scores = {}
+    # the best score result for a fit and its corresponding a parameter set
+    best_score = sys.float_info.min
+    best_params = None
 
     # create a parameter grid we'll use to parameterize the model at each iteration
     alphas = [0.25, 0.5, 1.0, 2.5, 5, 10]
     max_iterations = [None, 1, 2, 5, 10, 50, 100, 1000, 100000]
     tolerances = [0.00001, 0.001, 0.01, 0.1, 1, 2, 5, 10]
     solvers = ['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga']
-    param_grid = ParameterGrid({'alpha': alphas, 'max_iter': max_iterations, 'tol': tolerances, "solver": solvers})
+    param_grid = ParameterGrid({'alpha': alphas,
+                                'max_iter': max_iterations,
+                                'tol': tolerances,
+                                'solver': solvers})
 
     # iterate over each model parameterization
     for params in param_grid:
@@ -81,32 +136,36 @@ def train_test_regression_ridge(x_train,
             model = Ridge(**params)
             model.fit(x_train, y_train)
             score = model.score(x_test, y_test)
-            model_scores[score] = params
+            if score > best_score:
+                best_score = score
+                best_params = params
 
         except Exception:
             _logger.exception('Failed to complete', exc_info=True)
             raise
 
-    return model_scores
+    return best_score, best_params
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def train_test_regression_forest(x_train,
-                                 y_train,
-                                 x_test,
-                                 y_test):
+def score_regression_forest(x_train,
+                            y_train,
+                            x_test,
+                            y_test):
     """
     Train and test using the random forest regression model using a train/test split of single dataset.
+    Returns the best score and corresponding parameter list.
 
     :param x_train:
     :param y_train:
     :param x_test:
     :param y_test:
-    :return: None
+    :return: best score (float) and corresponding list of parameters
     """
 
-    # a dictionary of model scores to parameters that we'll populate and return
-    model_scores = {}
+    # the best score result for a fit and its corresponding a parameter set
+    best_score = sys.float_info.min
+    best_params = None
 
     # create a parameter grid we'll use to parameterize the model at each iteration
     estimators = [1, 2, 5, 10, 25, 100]
@@ -114,7 +173,7 @@ def train_test_regression_forest(x_train,
     max_features = [1, 2, 3, 0.5, 0.75, 'auto', 'sqrt', 'log2', None]
     max_depths = [None, 1, 2, 3, 5, 10, 20]
     min_samples_splits = [2, 5, 10, 0.1, 0.25, 0.5, 0.75]
-    min_samples_leafs = [1, 2, 5, 10, 0.1, 0.25, 0.5, 0.75]
+    min_samples_leafs = [1, 2, 5, 10, 0.1, 0.25, 0.5]
     bootstraps = [True, False]
     n_jobs = [-1]   # run fit jobs in parallel across all cores
     param_grid = ParameterGrid({'n_estimators': estimators,
@@ -129,101 +188,18 @@ def train_test_regression_forest(x_train,
     # iterate over each model parameterization
     for params in param_grid:
         try:
-            model = Ridge(**params)
-            model.fit(x_train, y_train)
+            model = RandomForestRegressor(**params)
+            model.fit(x_train, y_train.values.ravel())
             score = model.score(x_test, y_test)
-            model_scores[score] = params
+            if score > best_score:
+                best_score = score
+                best_params = params
 
         except Exception:
             _logger.exception('Failed to complete', exc_info=True)
             raise
 
-    return model_scores
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-def train_test_regression(x_train,
-                          y_train,
-                          x_test,
-                          y_test):
-    """
-    Train and test a number of regression models using a train/test split of single dataset, and log/report scores.
-    Each regression model used will use its default initialization parameters.
-
-    :param x_train:
-    :param y_train:
-    :param x_test:
-    :param y_test:
-    :return: None
-    """
-
-    # a dictionary of model names to scores we'll populate and return
-    model_scores = {}
-
-    # create and train a linear regression model
-    model = LinearRegression()
-    model.fit(x_train, y_train)
-    model_scores["LinearRegression"] = model.score(x_test, y_test)
-
-    # create and train a ridge regression model
-    model = Ridge()
-    model.fit(x_train, y_train)
-    model_scores["Ridge"] = model.score(x_test, y_test)
-
-    # create and train a random forest regression model
-    for trees in [3, 10, 20, 100, 250]:
-        model = RandomForestRegressor(n_estimators=trees)
-        model.fit(x_train, y_train)
-        score = model.score(x_test, y_test)
-        _logger.info("Random Forest (trees={t}) score: {result}".format(t=trees, result=score))
-
-    # create and train a K-neighbors regression model
-    for k in [1, 3, 5, 10, 20]:
-        model = KNeighborsRegressor(n_neighbors=k)
-        model.fit(x_train, y_train)
-        score = model.score(x_test, y_test)
-        _logger.info("K-Neighbors (k={k}) score: {result}".format(k=k, result=score))
-
-    # # create and train an Ada boost regression model, trying various estimators and learning rate parameters
-    # for estimators in [1, 3, 5, 10, 20]:
-    #     for rate in [0.01, 0.1, 1, 5, 12]:
-    #         model = AdaBoostRegressor(n_estimators=estimators, learning_rate=rate)
-    #         model.fit(x_train, y_train)
-    #         score = model.score(x_test, y_test)
-    #         _logger.info("Ada Boost (estimators={n}, learning rate={r}) score: {result}".format(n=estimators,
-    #                                                                                             r=rate,
-    #                                                                                             result=score))
-
-    # # create and train a bagging regression model
-    # model = BaggingRegressor()
-    # model.fit(x_train, y_train)
-    # score = model.score(x_test, y_test)
-    # _logger.info("Bagging score: {result}".format(result=score))
-
-    # create and train an extra trees regression model
-    for trees in [3, 6, 10, 20]:
-        model = ExtraTreesRegressor(n_estimators=trees)
-        model.fit(x_train, y_train)
-        score = model.score(x_test, y_test)
-        _logger.info("Extra Trees (trees={t}) score: {result}".format(t=trees, result=score))
-
-    # create and train a support vector regression model with an linear kernel
-    model = SVR(kernel='linear', C=1e3)
-    model.fit(x_train.flatten(), y_train.flatten())
-    score = model.score(x_test, y_test)
-    _logger.info("SVR (linear) score: {result}".format(result=score))
-
-    # create and train a support vector regression model with a polynomial kernel
-    model = SVR(kernel='poly', C=1e3, degree=2)
-    model.fit(x_train, y_train)
-    score = model.score(x_test, y_test)
-    _logger.info("SVR (polynomial) score: {result}".format(result=score))
-
-    # create and train a support vector regression model with an RBF kernel
-    model = SVR(kernel='rbf', C=1e3, gamma=0.1)
-    model.fit(x_train, y_train)
-    score = model.score(x_test, y_test)
-    _logger.info("SVR (RBF) score: {result}".format(result=score))
+    return best_score, best_params
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -304,11 +280,11 @@ def pull_vars_into_dataframe(dataset,
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def train_test_hemispheres(features_dataset,
-                           labels_dataset,
-                           feature_vars,
-                           label_vars,
-                           level_ix):
+def split_hemispheres(features_dataset,
+                      labels_dataset,
+                      feature_vars,
+                      label_vars,
+                      level_ix):
     """
     Split the features and labels datasets into train and test arrays, using the northern hemisphere
     for training and the southern hemisphere for testing. Assumes a regular global grid with full
@@ -382,11 +358,11 @@ def score_models(dataset_features,
             # split into train/test datasets
             if split_on_hemispheres:
 
-                train_x, test_x, train_y, test_y = train_test_hemispheres(dataset_features,
-                                                                          dataset_labels,
-                                                                          feature_vars,
-                                                                          [label],
-                                                                          level_ix=lev)
+                train_x, test_x, train_y, test_y = split_hemispheres(dataset_features,
+                                                                     dataset_labels,
+                                                                     feature_vars,
+                                                                     [label],
+                                                                     level_ix=lev)
 
             else:
 
@@ -401,36 +377,37 @@ def score_models(dataset_features,
                                                                     random_state=4)
 
             # for this group of features/label perform some training/tests using various regression models
-            _logger.info("Model results for features: {fs}  and label: {lbl} at level {l}".format(fs=feature_vars,
-                                                                                                  lbl=label,
-                                                                                                  l=lev))
+            _logger.info("Model results for features: {fs} and label: {lbl} at level {lvl}".format(fs=feature_vars,
+                                                                                                   lbl=label,
+                                                                                                   lvl=lev))
 
-            # score the linear regression model using various parameters
-            score_params = train_test_regression_linear(train_x, train_y, test_x, test_y)
+            # score the linear regression model using various parameters, log the best results
+            best_score, best_params = score_regression_linear(train_x, train_y, test_x, test_y)
+            _logger.info("LinearRegressor model results:")
+            _logger.info("    Best parameter set: {params}".format(params=best_params))
+            _logger.info("    Best score: {score}".format(score=best_score))
 
-            best_score = np.max(np.array(list(score_params.keys())))
-            best_param_set = score_params[best_score]
-            print("LinearRegression")
-            print("    Best parameter set: {params}".format(params=best_param_set))
-            print("    Best score: {score}".format(score=best_score))
+            # only try K-Neighbors if we didn't get a decent score from linear regression
+            if best_score < 0.97:
+                # score the K nearest neighbors regression model using various parameters, log the best results
+                best_score, best_params = score_regression_kneighbors(train_x, train_y, test_x, test_y)
+                _logger.info("KNeighborsRegressor model results:")
+                _logger.info("    Best parameter set: {params}".format(params=best_params))
+                _logger.info("    Best score: {score}".format(score=best_score))
 
-            # score the ridge regression model using various parameters
-            score_params = train_test_regression_ridge(train_x, train_y, test_x, test_y)
+            # # linear regression seems sufficient up to level 10 or so
+            # if lev > 10:
+            #     # score the ridge regression model using various parameters, log the best results
+            #     best_score, best_params = score_regression_ridge(train_x, train_y, test_x, test_y)
+            #     _logger.info("Ridge model results:")
+            #     _logger.info("    Best parameter set: {params}".format(params=best_params))
+            #     _logger.info("    Best score: {score}".format(score=best_score))
 
-            best_score = np.max(np.array(list(score_params.keys())))
-            best_param_set = score_params[best_score]
-            print("Ridge")
-            print("    Best parameter set: {params}".format(params=best_param_set))
-            print("    Best score: {score}".format(score=best_score))
-
-            # score the random forest regression model using various parameters
-            score_params = train_test_regression_forest(train_x, train_y, test_x, test_y)
-
-            best_score = np.max(np.array(list(score_params.keys())))
-            best_param_set = score_params[best_score]
-            print("Random Forest")
-            print("    Best parameter set: {params}".format(params=best_param_set))
-            print("    Best score: {score}".format(score=best_score))
+            # # score the random forest regression model using various parameters, log the best results
+            # best_score, best_params = score_regression_forest(train_x, train_y, test_x, test_y)
+            # _logger.info("Random Forest model results:")
+            # _logger.info("    Best parameter set: {params}".format(params=best_params))
+            # _logger.info("    Best score: {score}".format(score=best_score))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -473,30 +450,14 @@ if __name__ == '__main__':
         # init_day = 27
         # timestamps = extract_timestamps(ds_features, init_year, init_month, init_day)
 
-        # # train/fit/score models using the dry features and corresponding labels
-        # features = ['PS', 'T', 'U', 'V']
-        # labels = ['PTTEND', 'PUTEND', 'PVTEND']
-        # score_models(ds_features,
-        #              ds_labels,
-        #              features,
-        #              labels)
-
-        # train/fit/score models using the moist features and corresponding labels
-        features = ['PRECL', 'Q']
-        labels = ['SHFLX']
+        # train/fit/score models using the dry features and corresponding labels
+        features = ['PS', 'T', 'U', 'V']
+        labels = ['PTTEND']
         score_models(ds_features,
                      ds_labels,
                      features,
                      labels,
                      split_on_hemispheres=True)
-
-        # # train/fit/score models using the dry and moist features and the moist labels
-        # features = ['PS', 'T', 'U', 'V', 'PRECL', 'Q']
-        # labels = ['SHFLX']
-        # score_models(ds_features,
-        #              ds_labels,
-        #              features,
-        #              labels)
 
     except Exception:
 
