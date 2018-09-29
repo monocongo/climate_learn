@@ -172,7 +172,7 @@ def split_into_hemisphere_arrays(features_dataset,
     :param feature_vars: list of variables to include from the features DataSet
     :param label_vars: list of variables to include from the labels DataSet
     :param level_ix: level coordinate index, assumes a 'lev' coordinate for all specified feature and label variables
-    :return: numpy arrays with 4-D shape (times, lons, lats, vars)
+    :return: numpy arrays with 4-D shape (times, lats, lons, vars)
     """
 
     # make array from features, using the northern hemisphere for training data
@@ -342,11 +342,14 @@ if __name__ == '__main__':
 
         elif args.model == 'cnnlstm':
 
-            model = define_model_cnn_lstm(len(features), out_size_lat, out_size_lon, out_size_time)
+            model = define_model_cnn_lstm(out_size_time, out_size_lat, out_size_lon, len(features), len(labels))
 
         else:
 
             raise ValueError("Invalid model argument: {m}".format(m=args.model))
+
+        # display the model summary
+        model.summary()
 
         # loop over each level, keeping a record of the error rate for each level, for later visualization
         level_error_rates = {}
@@ -361,6 +364,14 @@ if __name__ == '__main__':
                                                                              labels,
                                                                              level_ix=lev)
 
+                # scale the data into a (0..1) range since this will optimize the neural network's performance
+                scaler_x = MinMaxScaler(feature_range=(0, 1))
+                scaler_y = MinMaxScaler(feature_range=(0, 1))
+                train_x_scaled = scaler_x.fit_transform(train_x)
+                train_y_scaled = scaler_y.fit_transform(train_y)
+                test_x_scaled = scaler_x.transform(test_x)
+                test_y_scaled = scaler_y.transform(test_y)
+
             elif args.model == 'cnnlstm':
 
                 # split the data into train/test datasets using a north/south 50/50 split
@@ -370,32 +381,92 @@ if __name__ == '__main__':
                                                                                 labels,
                                                                                 level_ix=lev)
 
+                # scale the data into a (0..1) range since this will optimize the neural network's performance
+
+                # initialize a 2-D list of lists (lats x lons) to score scalers for each lat/lon location
+                scalers_x = [[None for _ in range(out_size_lon)] for _ in range(out_size_lat)]
+                scalers_y = [[None for _ in range(out_size_lon)] for _ in range(out_size_lat)]
+
+                # allocate arrays to hold scaled values
+                train_x_scaled = np.copy(train_x)
+                train_y_scaled = np.copy(train_y)
+                test_x_scaled = np.copy(test_x)
+                test_y_scaled = np.copy(test_y)
+
+                # data is in 4-D with shape (times, lats, lons, vars), scalers can only work on 2-D arrays,
+                # so for each lat/lon we scale the corresponding 2-D array, storing the scalers for later use
+                # when scaling the data back to the original scale
+                for lat in range(out_size_lat):
+                    for lon in range(out_size_lon):
+                        scaler_x = MinMaxScaler(feature_range=(0, 1))
+                        scaler_y = MinMaxScaler(feature_range=(0, 1))
+                        scalers_x[lat][lon] = scaler_x
+                        scalers_y[lat][lon] = scaler_y
+                        train_x_scaled[:, lat, lon, :] = scaler_x.fit_transform(train_x[:, lat, lon, :])
+                        train_y_scaled[:, lat, lon, :] = scaler_y.fit_transform(train_y[:, lat, lon, :])
+                        test_x_scaled[:, lat, lon, :] = scaler_x.transform(test_x[:, lat, lon, :])
+                        test_y_scaled[:, lat, lon, :] = scaler_y.transform(test_y[:, lat, lon, :])
+
             else:
 
                 raise ValueError("Invalid model argument: {m}".format(m=args.model))
-
-            # scale the data into a small range since this will optimize the neural network's performance
-            scaler_x = MinMaxScaler(feature_range=(0, 1))
-            scaler_y = MinMaxScaler(feature_range=(0, 1))
-            train_x_scaled = scaler_x.fit_transform(train_x)
-            train_y_scaled = scaler_y.fit_transform(train_y)
-            test_x_scaled = scaler_x.transform(test_x)
-            test_y_scaled = scaler_y.transform(test_y)
 
             # train the model for this level
             model.fit(train_x_scaled, train_y_scaled, epochs=2, shuffle=True, verbose=2)
 
             # get the new features from which we'll predict new label(s), using the same scaler as was used for training
-            predict_x = pull_vars_into_dataframe(ds_predict_features,
+            if args.model == 'dense':
+
+                predict_x = pull_vars_into_dataframe(ds_predict_features,
+                                                     features,
+                                                     lev)
+                predict_x_scaled = scaler_x.transform(predict_x)
+
+            elif args.model == 'cnnlstm':
+
+                predict_x = pull_vars_into_array(ds_predict_features,
                                                  features,
                                                  lev)
-            predict_x_scaled = scaler_x.transform(predict_x)
+
+                # allocate array to hold scaled values
+                predict_x_scaled = np.copy(predict_x)
+
+                # data is in 4-D with shape (times, lats, lons, vars), scalers can only work on 2-D arrays,
+                # so for each lat/lon we scale the corresponding 2-D array, storing the scalers for later use
+                # when scaling the data back to the original scale
+                for lat in range(out_size_lat):
+                    for lon in range(out_size_lon):
+                        scaler_x = scalers_x[lat, lon]
+                        predict_x_scaled[:, lat, lon, :] = scaler_x.fit_transform(predict_x[:, lat, lon, :])
+
+            else:
+
+                raise ValueError("Invalid model argument: {m}".format(m=args.model))
 
             # use the model to predict label values from new inputs
             predict_y_scaled = model.predict(predict_x_scaled, verbose=1)
 
             # unscale the data, using the same scaler as was used for training
-            predict_y = scaler_y.inverse_transform(predict_y_scaled)
+            if args.model == 'dense':
+
+                predict_y = scaler_y.inverse_transform(predict_y_scaled)
+
+            elif args.model == 'cnnlstm':
+
+                # allocate array to hold scaled values
+                predict_y = np.copy(predict_y_scaled)
+
+                # data is in 4-D with shape (times, lats, lons, vars), scalers can only work on 2-D arrays,
+                # so for each lat/lon we scale the corresponding 2-D array, storing the scalers for later use
+                # when scaling the data back to the original scale
+                for lat in range(out_size_lat):
+                    for lon in range(out_size_lon):
+                        scaler_y = scalers_y[lat, lon]
+                        predict_y[:, lat, lon, :] = scaler_y.inverse_transform(predict_y_scaled[:, lat, lon, :])
+
+            else:
+
+                raise ValueError("Invalid model argument: {m}".format(m=args.model))
 
             # write the predicted values for the level into the predicted label's data array
             prediction[:, lev, :, :] = np.reshape(predict_y, newshape=(out_size_time, out_size_lat, out_size_lon))
