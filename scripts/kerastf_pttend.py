@@ -77,7 +77,7 @@ def pull_vars_into_array(dataset,
     :param variables: list of variables to be extracted from the DataSet and included in the resulting DataFrame
     :param level: the level index (all times, lats, and lons included from this indexed level)
     :param hemisphere: 'north', 'south', or None
-    :return: an array with shape (len(variables), ds.lat.size, ds.lon.size, ds.time.size) and dtype float
+    :return: an array with shape (ds.time.size, ds.lat.size, ds.lon.size, len(variables)) and dtype float
     """
 
     # slice the dataset down to a hemisphere, if specified
@@ -90,7 +90,7 @@ def pull_vars_into_array(dataset,
             raise ValueError("Unsupported hemisphere argument: {hemi}".format(hemi=hemisphere))
 
     # the array we'll populate and return
-    arr = np.empty(shape=[len(variables), dataset.lat.size, dataset.lon.size, dataset.time.size], dtype=float)
+    arr = np.empty(shape=[dataset.time.size, dataset.lat.size, dataset.lon.size, len(variables)], dtype=float)
 
     # loop over each variable, adding each into the dataframe
     for index, var in enumerate(variables):
@@ -104,11 +104,8 @@ def pull_vars_into_array(dataset,
         else:
             raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
 
-        # reshape from ('time', 'lat', 'lon') to ('lat', 'lon', 'time')
-        values = np.moveaxis(values, 0, -1)
-
         # add the values into the array at the variable's position
-        arr[index] = values
+        arr[:, :, :, index] = values
 
     return arr
 
@@ -175,7 +172,7 @@ def split_into_hemisphere_arrays(features_dataset,
     :param feature_vars: list of variables to include from the features DataSet
     :param label_vars: list of variables to include from the labels DataSet
     :param level_ix: level coordinate index, assumes a 'lev' coordinate for all specified feature and label variables
-    :return: numpy arrays with 4-D shape (vars, lons, lats, times)
+    :return: numpy arrays with 4-D shape (times, lons, lats, vars)
     """
 
     # make array from features, using the northern hemisphere for training data
@@ -219,31 +216,46 @@ def define_model_dense():
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def define_model_cnn_lstm(channels, lats, lons, times):
+def define_model_cnn_lstm(times, lats, lons, features, labels):
     """
-    Create and return a model with CN and LSTM layers. Input data is
-    expected to have shape (channels, lats, lons, times).
+    Create and return a model with CN and LSTM layers. Input data is expected to have
+    shape (times, lats, lons, features) and output data will have shape (times, lats, lons, labels).
 
-    :param channels: channel dimension of input 4-D array
-    :param lats: latitude dimension of input 4-D array
-    :param lons: longitude dimension of input 4-D array
-    :param times: time dimension of input 4-D array
-    :return: CNN-LSTM model appropriate to the expected input array
+    :param times: time dimension of input/output 4-D array
+    :param lats: latitude dimension of input/output 4-D array
+    :param lons: longitude dimension of input/output 4-D array
+    :param features: feature dimension of input 4-D array
+    :param labels: label dimension of output 4-D array
+    :return: CNN-LSTM model appropriate to the expected input/output arrays
     """
-    # define the CNN model layers, wrapping each CNN layer in a TimeDistributed layer
+
+    # the model we'll build and return
     model = Sequential()
-    model.add(TimeDistributed(Cropping3D(data_format="channels_first")))
-    model.add(TimeDistributed(MaxPooling3D(data_format="channels_first")))
-    # model.add(TimeDistributed(Conv2D(filters=lats*lons,
-    #                                  kernel_size=(3, 3),
-    #                                  activation='relu',
-    #                                  input_shape=(channels, lats, lons, times))))
-    # model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+
+    # define the convolutional layers, wrapping each in a TimeDistributed layer
+    model.add(TimeDistributed(Conv2D(16, (3, 3), activation='relu', padding='same'),
+                              input_shape=(times, lats, lons, features)))
+    model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+    model.add(TimeDistributed(Conv2D(32, (3, 3), activation='relu', padding='same')))
+    model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+    model.add(TimeDistributed(Conv2D(32, (3, 3), activation='relu', padding='same')))
+    model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
     model.add(TimeDistributed(Flatten()))
 
-    # add the LSTM layer, and final Dense layer
-    model.add(LSTM(units=times, activation='relu', stateful=True, return_sequences=True))
-    model.add(Dense(1))
+    # add the LSTM layer
+    model.add(LSTM(units=64, return_sequences=True))
+
+    # reshape the result of the LSTM layer(s) to make it 2D and then use the combination
+    # of UpSampling2D and Conv2D layers to get the original map's shape back
+    model.add(TimeDistributed(Reshape((8, 8, 1))))
+    model.add(TimeDistributed(UpSampling2D((2, 2))))
+    model.add(TimeDistributed(Conv2D(32, (3, 3), activation='relu', padding='same')))
+    model.add(TimeDistributed(UpSampling2D((2, 2))))
+    model.add(TimeDistributed(Conv2D(32, (3, 3), activation='relu', padding='same')))
+    model.add(TimeDistributed(UpSampling2D((2, 2))))
+    model.add(TimeDistributed(Conv2D(16, (3, 3), activation='relu', padding='same')))
+    model.add(TimeDistributed(UpSampling2D((2, 2))))
+    model.add(TimeDistributed(Conv2D(labels, (3, 3), padding='same')))
 
     model.compile(optimizer='adam', loss='mse')
 
@@ -253,7 +265,8 @@ def define_model_cnn_lstm(channels, lats, lons, times):
 # ----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     """
-    This module is used to showcase ML modeling of the climate using scikit-learn, using NCAR CAM files as input.
+    This module is used to showcase ML modeling of the climate using neural networks, 
+    initially using NCAR CAM files as inputs.
     """
 
     try:
