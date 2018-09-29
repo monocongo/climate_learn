@@ -384,8 +384,8 @@ if __name__ == '__main__':
                 # scale the data into a (0..1) range since this will optimize the neural network's performance
 
                 # initialize a 2-D list of lists (lats x lons) to score scalers for each lat/lon location
-                scalers_x = [[None for _ in range(out_size_lon)] for _ in range(out_size_lat)]
-                scalers_y = [[None for _ in range(out_size_lon)] for _ in range(out_size_lat)]
+                scalers_x = [[None for _ in range(out_size_lon)] for _ in range(int(out_size_lat / 2))]
+                scalers_y = [[None for _ in range(out_size_lon)] for _ in range(int(out_size_lat / 2))]
 
                 # allocate arrays to hold scaled values
                 train_x_scaled = np.copy(train_x)
@@ -396,7 +396,7 @@ if __name__ == '__main__':
                 # data is in 4-D with shape (times, lats, lons, vars), scalers can only work on 2-D arrays,
                 # so for each lat/lon we scale the corresponding 2-D array, storing the scalers for later use
                 # when scaling the data back to the original scale
-                for lat in range(out_size_lat):
+                for lat in range(int(out_size_lat / 2)):  # divide by 2 since we're using hemispheres
                     for lon in range(out_size_lon):
                         scaler_x = MinMaxScaler(feature_range=(0, 1))
                         scaler_y = MinMaxScaler(feature_range=(0, 1))
