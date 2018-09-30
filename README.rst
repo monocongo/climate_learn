@@ -2,7 +2,7 @@
 Climate Modeling using Machine Learning
 =======================================
 
-Research into using a machine learning (ML) approach for climate modeling.
+Research into using a machine learning (ML) approach for climate modeling
 --------------------------------------------------------------------------
 Using the results of the `NCAR Community Atmosphere Model (CAM) <http://www.cesm.ucar.edu/models/atm-cam/>`_ as a basis
 we attempt to create a ML model that matches CAM results in order to
