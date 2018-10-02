@@ -209,13 +209,13 @@ if __name__ == '__main__':
         # trim out all non-relevant data variables from the datasets
         for var in ds_learn_features.data_vars:
             if var not in features:
-                ds_learn_features.drop(var)
+                ds_learn_features = ds_learn_features.drop(var)
         for var in ds_learn_labels.data_vars:
             if var not in labels:
-                ds_learn_labels.drop(var)
+                ds_learn_labels = ds_learn_labels.drop(var)
         for var in ds_predict_features.data_vars:
             if var not in features:
-                ds_predict_features.drop(var)
+                ds_predict_features = ds_predict_features.drop(var)
 
         # reduce data into 128 lats and 128 lons
 
