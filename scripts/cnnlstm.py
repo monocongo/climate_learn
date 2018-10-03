@@ -126,12 +126,12 @@ def define_model_cnn_lstm(times, lats, lons, features, labels):
     model = Sequential()
 
     # define the convolutional layers, wrapping each in a TimeDistributed layer
-    model.add(TimeDistributed(Conv2D(filters=16, kernel_sze=(3, 3), activation='relu', padding='same'),
+    model.add(TimeDistributed(Conv2D(16, (3, 3), activation='relu', padding='same'),
                               input_shape=(times, lats, lons, features)))
     model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-    model.add(TimeDistributed(Conv2D(filters=32, kernel_sze=(3, 3), activation='relu', padding='same')))
+    model.add(TimeDistributed(Conv2D(32, (3, 3), activation='relu', padding='same')))
     model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-    model.add(TimeDistributed(Conv2D(filters=32, kernel_sze=(3, 3), activation='relu', padding='same')))
+    model.add(TimeDistributed(Conv2D(32, (3, 3), activation='relu', padding='same')))
     model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
     model.add(TimeDistributed(Flatten()))
 
@@ -227,10 +227,15 @@ if __name__ == '__main__':
         out_size_lon = ds_predict_features.lon.size
         prediction = np.empty(dtype=float, shape=(out_size_time, out_size_lev, out_size_lat, out_size_lon))
 
+        # dimension sizes expected when providing inputs to the model
+        model_size_time = out_size_time
+        model_size_lat = 128
+        model_size_lon = 128
+
         # define the model
-        model = define_model_cnn_lstm(out_size_time,
-                                      int(out_size_lat / 2),
-                                      out_size_lon,
+        model = define_model_cnn_lstm(model_size_time,
+                                      model_size_lat,
+                                      model_size_lon,
                                       len(features),
                                       len(labels))
 
@@ -280,8 +285,16 @@ if __name__ == '__main__':
             shape = train_y_scaled.shape
             train_y_scaled = np.reshape(train_y_scaled, newshape=(1, shape[0], shape[1], shape[2], shape[3]))
 
+            # reshape the input to the model's expected shape
+            shape = train_x_scaled.shape
+            model_shape = (shape[0], shape[1], model_size_lat, model_size_lon, shape[4])
+            train_x_scaled_reshaped = np.resize(train_x_scaled, model_shape)
+            shape = train_y_scaled.shape
+            model_shape = (shape[0], shape[1], model_size_lat, model_size_lon, shape[4])
+            train_y_scaled_reshaped = np.resize(train_y_scaled, model_shape)
+
             # train the model for this level
-            model.fit(train_x_scaled, train_y_scaled, epochs=2, shuffle=True, verbose=2)
+            model.fit(train_x_scaled_reshaped, train_y_scaled_reshaped, epochs=2, shuffle=True, verbose=2)
 
             # get the new features from which we'll predict new label(s), using the same scaler as was used for training
             predict_x = pull_vars_into_array(ds_predict_features,
