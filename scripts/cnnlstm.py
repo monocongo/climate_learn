@@ -110,14 +110,14 @@ def split_into_hemisphere_arrays(features_dataset,
 def define_model_cnn_lstm(times, lats, lons, features, labels):
     """
     Create and return a model with CN and LSTM layers. Input data is expected to have
-    shape (times, lats, lons, features) and output data will have shape (times, lats, lons, labels).
+    shape (1, times, lats, lons, features) and output data will have shape (1, times, lats, lons, labels).
 
     *NOTE* Current model definition is specific to inputs with 128 lats and lons.
 
-    :param times: time dimension of input/output 4-D array
-    :param lats: latitude dimension of input/output 4-D array
-    :param lons: longitude dimension of input/output 4-D array
-    :param features: feature dimension of input 4-D array
+    :param times: time dimension of input/output 5-D array
+    :param lats: latitude dimension of input/output 5-D array
+    :param lons: longitude dimension of input/output 5-D array
+    :param features: feature dimension of input 5-D array
     :param labels: label dimension of output 4-D array
     :return: CNN-LSTM model appropriate to the expected input/output arrays
     """
@@ -257,11 +257,12 @@ if __name__ == '__main__':
             # reduce data into 128 lats and 128 lons (size of current model input in lat/lon dims)
 
             # resize the input to the model's expected shape/size  (1, times, lats, lons, channels)
-            model_shape = (1, train_x.shape[0], model_size_lat, model_size_lon, train_x.shape[3])
-            train_x = np.resize(train_x, model_shape)
-            test_x = np.resize(test_x, model_shape)
-            train_y = np.resize(train_y, model_shape)
-            test_y = np.resize(test_y, model_shape)
+            model_shape_x = (1, train_x.shape[0], model_size_lat, model_size_lon, train_x.shape[3])
+            model_shape_y = (1, train_y.shape[0], model_size_lat, model_size_lon, train_y.shape[3])
+            train_x = np.resize(train_x, model_shape_x)
+            test_x = np.resize(test_x, model_shape_x)
+            train_y = np.resize(train_y, model_shape_y)
+            test_y = np.resize(test_y, model_shape_y)
 
             # scale the data into a (0..1) range since this will optimize the neural network's performance
 
