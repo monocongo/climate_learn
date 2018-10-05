@@ -18,6 +18,9 @@ Goals
 
 Relevant literature
 -------------------
+`Convolutional LSTM Network: A Machine Learning
+Approach for Precipitation Nowcasting (Shi, Chen, Wang, Yeung) <https://arxiv.org/pdf/1506.04214.pdf>`_
+
 `Machine learning of atmospheric chemistry (Evans, Keller) <http://adsabs.harvard.edu/abs/2017AGUFM.A41H2384E>`_
 
 `Downscaling of precipitation for climate change scenarios: A support vector machine approach (Tripathi, Srinivas, Nanjundiah) <https://doi.org/10.1016/j.jhydrol.2006.04.030>`_
