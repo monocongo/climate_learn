@@ -42,11 +42,12 @@ def get_input(features_ds,
       Tuple of (features, labels) for next data batch
     """
   
-    # Get the shape of the initial feature variable, which we assume is the same
-    # as all other feature and target variables. The we'll use the product of 
-    # the final three values (lev, lat, and lon) as the first shape value we'll
-    # use for our reshaped feature arrays, and use the variable's first shape
-    # value as the second shape value of our reshaped feature arrays.
+    # Get the shape of the initial feature variable, which we assume is 
+    # the same as all other feature and target variables. The we'll use 
+    # the product of the final three values (lev, lat, and lon) as the first
+    # shape value we'll use for our reshaped feature arrays, s0, and use the 
+    # variable's first shape value as the second shape value of our 
+    # reshaped feature arrays, s1. Reshaped array will have shape (s0, s1).
     var_shape = list(features_ds.variables.items())[0][1].shape
     s0 = var_shape[1] * var_shape[2] * var_shape[3]
     s1 = var_shape[0]
@@ -60,11 +61,11 @@ def get_input(features_ds,
         v = features_ds[var]  # the variable itself is an xarray.DataArray
         features[var] = v.values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
         
-    # Perform the same for the target dataset, which we assume contains a single
-    # variable with the same initial shape as the feature dataset's variables.
-    targets = {}
-    var = list(targets_ds.variables.items())[0][0]
-    targets[var] = targets_ds[var].values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
+#     # Perform the same for the target dataset, which we assume contains a single
+#     # variable with the same initial shape as the feature dataset's variables.
+#     targets = {}
+#     var = list(targets_ds.variables.items())[0][0]
+#     targets[var] = targets_ds[var].values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
 
     # Create a targets array from the target variable.
     targets = targets_ds[var].values.swapaxes(0, 3).swapaxes(1, 2).reshape(s0, s1)
@@ -211,14 +212,18 @@ if __name__ == '__main__':
         features_validation = data_h0.isel(lon=lon_range_validation)
         features_testing = data_h0.isel(lon=lon_range_testing)
         
-        print("Features train length: {}".format(features_training['T'].values.size / 720))
-        print("Features valid length: {}".format(features_validation['T'].values.size / 720))
-        print("Features test length:  {}".format(features_testing['T'].values.size / 720))
+        print("Number of features (training):    {}".format(features_training['T'].values.size / data_h0.dims['time']))
+        print("Number of features (validation):  {}".format(features_validation['T'].values.size / data_h0.dims['time']))
+        print("Number of features (testing):     {}".format(features_testing['T'].values.size / data_h0.dims['time']))
         
         targets_training = data_h1.isel(lon=lon_range_training)
         targets_validation = data_h1.isel(lon=lon_range_validation)
         targets_testing = data_h1.isel(lon=lon_range_testing)
         
+        print("Number of targets (training):    {}".format(targets_training.dims['lev'] * targets_training.dims['lon'] * targets_training.dims['lat']))
+        print("Number of targets (validation):  {}".format(targets_validation.dims['lev'] * targets_validation.dims['lon'] * targets_validation.dims['lat']))
+        print("Number of targets (testing):     {}".format(targets_testing.dims['lev'] * targets_testing.dims['lon'] * targets_testing.dims['lat']))
+
         """
         ## Create the neural network
         
@@ -304,6 +309,10 @@ if __name__ == '__main__':
         
             # Take a break and compute predictions, converting to numpy arrays.
             training_predictions = dnn_regressor.predict(input_fn=predict_input_training)
+            
+            # DEBUGGING -- REMOVE
+            print("Number of training predictions: {}".format(len(training_predictions)))
+            
             training_predictions = np.array([item['predictions'][0] for item in training_predictions])
             
             validation_predictions = dnn_regressor.predict(input_fn=predict_input_validation)
