@@ -242,7 +242,7 @@ if __name__ == '__main__':
             model.fit(train_x_scaled, train_y_scaled, epochs=2, shuffle=True, verbose=2)
 
             # evaluate the model's fit
-            level_error_rates[lev] = model.evaluate(test_x, test_y)
+            level_error_rates[lev] = model.evaluate(test_x_scaled, test_y_scaled)
 
             # get the new features from which we'll predict new label(s), using the same scaler as was used for training
             predict_x = pull_vars_into_dataframe(ds_predict_features,
