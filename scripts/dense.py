@@ -208,7 +208,7 @@ if __name__ == '__main__':
         prediction = np.empty(dtype=float, shape=(out_size_time, out_size_lev, out_size_lat, out_size_lon))
 
         # define the model
-        model = define_model_dense()
+        model = define_model_dense(len(features), len(labels))
 
         # display the model summary
         model.summary()
@@ -227,13 +227,22 @@ if __name__ == '__main__':
             # scale the data into a (0..1) range since this will optimize the neural network's performance
             scaler_x = MinMaxScaler(feature_range=(0, 1))
             scaler_y = MinMaxScaler(feature_range=(0, 1))
-            train_x_scaled = scaler_x.fit_transform(train_x)
-            train_y_scaled = scaler_y.fit_transform(train_y)
+
+            # fit to both hemispheres
+            scaler_x.fit(pd.concat([train_x, test_x]))
+            scaler_y.fit(pd.concat([train_y, test_y]))
+
+            # perform scaling
+            train_x_scaled = scaler_x.transform(train_x)
+            train_y_scaled = scaler_y.transform(train_y)
             test_x_scaled = scaler_x.transform(test_x)
             test_y_scaled = scaler_y.transform(test_y)
 
             # train the model for this level
             model.fit(train_x_scaled, train_y_scaled, epochs=2, shuffle=True, verbose=2)
+
+            # evaluate the model's fit
+            level_error_rates[lev] = model.evaluate(test_x, test_y)
 
             # get the new features from which we'll predict new label(s), using the same scaler as was used for training
             predict_x = pull_vars_into_dataframe(ds_predict_features,
@@ -256,7 +265,7 @@ if __name__ == '__main__':
         # remove all non-label data variables from the predictions dataset
         for var in ds_predict_labels.data_vars:
             if var not in labels:
-                ds_predict_labels.drop(var)
+                ds_predict_labels = ds_predict_labels.drop(var)
 
         # create a new variable to contain the predicted label, assign it into the prediction dataset
         predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
