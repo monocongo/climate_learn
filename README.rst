@@ -6,15 +6,19 @@ Research into using a machine learning (ML) approach for climate modeling
 --------------------------------------------------------------------------
 Using the results of the `NCAR Community Atmosphere Model (CAM) <http://www.cesm.ucar.edu/models/atm-cam/>`_ as a basis
 we attempt to create a ML model that matches CAM results in order to
-demonstrate suitability. The model will then be tuned for various climate scenarios, including
-the prediction of temperature and precipitation matching observational datasets.
+demonstrate suitability.
 
 Goals
 -----------
 
-- Develop a ML-based climate model using `Keras <https://keras.io>`_/`TensorFlow <https://www.tensorflow.org/>`_ which accurately predicts the results produced by CAM, using CAM inputs/outputs for training and evaluation, in order to approximately duplicate the capabilities of that model.
+- Develop a ML-based climate model using `Keras <https://keras.io>`_/`TensorFlow <https://www.tensorflow.org/>`_ and/or `fastai <https://github.com/fastai/fastai>`_ which accurately predicts the results produced by CAM, using CAM inputs/outputs for training and evaluation, in order to approximately duplicate the capabilities of that model.
 - Refine the ML-based model for observational inputs/outputs, for use in later comparisons of model results vs. observed climatologies.
-- Explore the extensibility of the model for predicting climate monitoring indices such as `SPI <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>`_, `SPEI <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-evapotranspiration-index-spei>`_, and `PDSI <https://climatedataguide.ucar.edu/climate-data/palmer-drought-severity-index-pdsi>`_.
+
+Initial Use Cases
+-----------------
+
+- Develop a model that learns and can predict the results of the `Held-Suarez test case <https://journals.ametsoc.org/doi/pdf/10.1175/1520-0477%281994%29075%3C1825%3AAPFTIO%3E2.0.CO%3B2>`_. This test case computes time tendency forcing values for temperature (PTTEND), zonal wind (PUTEND), and meridional wind (PVTEND). Inputs to the original equation used for this computation include temperature (T), zonal wind (U), meridional wind (V), and surface pressure (PS). The inputs and outputs of a series of runs of the NCAR CAM will be used to train and test the ML model as it's being developed.
+
 
 Relevant literature
 -------------------
