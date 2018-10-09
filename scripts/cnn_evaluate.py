@@ -17,22 +17,19 @@ _logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def pull_vars_into_dataframe(dataset,
-                             variables,
-                             level,
-                             hemisphere=None):
+def pull_vars_into_array(dataset,
+                         variables,
+                         level,
+                         hemisphere=None):
     """
-    Create a pandas DataFrame from the specified variables of an xarray DataSet.
+    Create a Numpy array from the specified variables of an xarray DataSet.
 
     :param dataset: xarray.DataSet
     :param variables: list of variables to be extracted from the DataSet and included in the resulting DataFrame
     :param level: the level index (all times, lats, and lons included from this indexed level)
     :param hemisphere: 'north', 'south', or None
-    :return:
+    :return: an array with shape (ds.time.size, ds.lat.size, ds.lon.size, len(variables)) and dtype float
     """
-
-    # the dataframe we'll populate and return
-    df = pd.DataFrame()
 
     # slice the dataset down to a hemisphere, if specified
     if hemisphere is not None:
@@ -43,35 +40,33 @@ def pull_vars_into_dataframe(dataset,
         else:
             raise ValueError("Unsupported hemisphere argument: {hemi}".format(hemi=hemisphere))
 
+    # the array we'll populate and return
+    arr = np.empty(shape=[dataset.time.size, dataset.lat.size, dataset.lon.size, len(variables)], dtype=float)
+
     # loop over each variable, adding each into the dataframe
-    for var in variables:
+    for index, var_name in enumerate(variables):
 
         # if we have (time, lev, lat, lon), then use level parameter
-        dimensions = dataset.variables[var].dims
+        dimensions = dataset.variables[var_name].dims
         if dimensions == ('time', 'lev', 'lat', 'lon'):
-            values = dataset[var].values[:, level, :, :]
+            values = dataset[var_name].values[:, level, :, :]
         elif dimensions == ('time', 'lat', 'lon'):
-            values = dataset[var].values[:, :, :]
+            values = dataset[var_name].values[:, :, :]
         else:
             raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
 
-        series = pd.Series(values.flatten())
+        # add the values into the array at the variable's position
+        arr[:, :, :, index] = values
 
-        # add the series into the dataframe
-        df[var] = series
-
-    # make sure we have a generic index name
-    df.index.rename('index', inplace=True)
-
-    return df
+    return arr
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def split_into_hemisphere_dfs(features_dataset,
-                              labels_dataset,
-                              feature_vars,
-                              label_vars,
-                              level_ix):
+def split_into_hemisphere_arrays(features_dataset,
+                                 labels_dataset,
+                                 feature_vars,
+                                 label_vars,
+                                 level_ix):
     """
     Split the features and labels datasets into train and test arrays, using the northern hemisphere
     for training and the southern hemisphere for testing. Assumes a regular global grid with full
@@ -86,28 +81,28 @@ def split_into_hemisphere_dfs(features_dataset,
     """
 
     # make DataFrame from features, using the northern hemisphere for training data
-    train_features = pull_vars_into_dataframe(features_dataset,
-                                              feature_vars,
-                                              level_ix,
-                                              hemisphere='north')
+    train_features = pull_vars_into_array(features_dataset,
+                                          feature_vars,
+                                          level_ix,
+                                          hemisphere='north')
 
     # make DataFrame from features, using the southern hemisphere for testing data
-    test_features = pull_vars_into_dataframe(features_dataset,
-                                             feature_vars,
-                                             level_ix,
-                                             hemisphere='south')
+    test_features = pull_vars_into_array(features_dataset,
+                                         feature_vars,
+                                         level_ix,
+                                         hemisphere='south')
 
     # make DataFrame from labels, using the northern hemisphere for training data
-    train_labels = pull_vars_into_dataframe(labels_dataset,
-                                            label_vars,
-                                            level_ix,
-                                            hemisphere='north')
+    train_labels = pull_vars_into_array(labels_dataset,
+                                        label_vars,
+                                        level_ix,
+                                        hemisphere='north')
 
     # make DataFrame from labels, using the southern hemisphere for testing data
-    test_labels = pull_vars_into_dataframe(labels_dataset,
-                                           label_vars,
-                                           level_ix,
-                                           hemisphere='south')
+    test_labels = pull_vars_into_array(labels_dataset,
+                                       label_vars,
+                                       level_ix,
+                                       hemisphere='south')
 
     return train_features, test_features, train_labels, test_labels
 
@@ -136,12 +131,12 @@ def define_model_cnn(num_times,
     cnn_model = Sequential()
 
     # add an initial 3-D convolutional layer
-    model.add(Conv3D(filters=32,
-                     kernel_size=(3, 3, 3),
-                     activation="relu",
-                     data_format="channels_last",
-                     input_shape=(num_times, num_lats, num_lons, num_features),
-                     padding='same'))
+    cnn_model.add(Conv3D(filters=32,
+                         kernel_size=(3, 3, 3),
+                         activation="relu",
+                         data_format="channels_last",
+                         input_shape=(num_times, num_lats, num_lons, num_features),
+                         padding='same'))
 
     # add a pooling layer
     cnn_model.add(MaxPooling3D(pool_size=(2, 2, 2),
@@ -209,7 +204,7 @@ if __name__ == '__main__':
         # get data dimension sizes
         size_time = ds_learn_features.time.size
         size_lev = ds_learn_features.lev.size
-        size_lat = ds_learn_features.lat.size
+        size_lat = int(ds_learn_features.lat.size / 2)  # divide by 2 since we're using hemispheres
         size_lon = ds_learn_features.lon.size
 
         # define the model
@@ -223,37 +218,42 @@ if __name__ == '__main__':
         for lev in range(size_lev):
 
             # split the data into train/test datasets using a north/south 50/50 split
-            train_x, test_x, train_y, test_y = split_into_hemisphere_dfs(ds_learn_features,
-                                                                         ds_learn_labels,
-                                                                         features,
-                                                                         labels,
-                                                                         level_ix=lev)
+            train_x, test_x, train_y, test_y = split_into_hemisphere_arrays(ds_learn_features,
+                                                                            ds_learn_labels,
+                                                                            features,
+                                                                            labels,
+                                                                            level_ix=lev)
 
-            # scale the data into a (0..1) range since this will optimize the neural network's performance
-            scaler_x = MinMaxScaler(feature_range=(0, 1))
-            scaler_y = MinMaxScaler(feature_range=(0, 1))
+            # data is 4-D with shape (times, lats, lons, vars), scalers can only work on 2-D arrays,
+            # so for each lat/lon we scale the corresponding 2-D array, storing the scalers for later use
+            # when we'll scale the data back to the original scale
+            for lat in range(size_lat):
+                for lon in range(size_lon):
 
-            # fit to both hemispheres
-            scaler_x.fit(pd.concat([train_x, test_x]))
-            scaler_y.fit(pd.concat([train_y, test_y]))
+                    # scale the data into a (0..1) range since this will optimize the neural network's performance
+                    scaler_x = MinMaxScaler(feature_range=(0, 1))
+                    scaler_y = MinMaxScaler(feature_range=(0, 1))
 
-            # perform scaling
-            train_x_scaled = scaler_x.transform(train_x)
-            train_y_scaled = scaler_y.transform(train_y)
-            test_x_scaled = scaler_x.transform(test_x)
-            test_y_scaled = scaler_y.transform(test_y)
+                    # fit to both hemispheres
+                    scaler_x.fit(np.concatenate((train_x[:, lat, lon, :], test_x[:, lat, lon, :]), axis=0))
+                    scaler_y.fit(np.concatenate((train_y[:, lat, lon, :], test_y[:, lat, lon, :]), axis=0))
+
+                    train_x[:, lat, lon, :] = scaler_x.transform(train_x[:, lat, lon, :])
+                    train_y[:, lat, lon, :] = scaler_y.transform(train_y[:, lat, lon, :])
+                    test_x[:, lat, lon, :] = scaler_x.transform(test_x[:, lat, lon, :])
+                    test_y[:, lat, lon, :] = scaler_y.transform(test_y[:, lat, lon, :])
 
             # reshape the data arrays into the model's expected input shape
-            train_x = np.reshape(train_x_scaled, newshape=(size_time, size_lat, size_lon, len(features)))
-            train_y = np.reshape(train_y_scaled, newshape=(size_time, size_lat, size_lon, len(labels)))
-            test_x = np.reshape(test_x_scaled, newshape=(size_time, size_lat, size_lon, len(features)))
-            test_y = np.reshape(test_y_scaled, newshape=(size_time, size_lat, size_lon, len(labels)))
+            train_x = np.reshape(train_x, newshape=(1, size_time, size_lat, size_lon, len(features)))
+            train_y = np.reshape(train_y, newshape=(1, size_time, size_lat, size_lon, len(labels)))
+            test_x = np.reshape(test_x, newshape=(1, size_time, size_lat, size_lon, len(features)))
+            test_y = np.reshape(test_y, newshape=(1, size_time, size_lat, size_lon, len(labels)))
 
             # train the model for this level
             model.fit(train_x, train_y, epochs=4, shuffle=True, verbose=2)
 
             # evaluate the model's fit
-            level_error_rates[lev] = model.evaluate(test_x_scaled, test_y_scaled)
+            level_error_rates[lev] = model.evaluate(test_x, test_y)
 
         # placeholder for debugging steps
         pass
