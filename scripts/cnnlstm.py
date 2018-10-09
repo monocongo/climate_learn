@@ -239,7 +239,7 @@ if __name__ == '__main__':
         # display the model summary
         model.summary()
 
-        # initialize a 2-D list of lists (lats x lons) to score scalers for each lat/lon location
+        # initialize a 2-D list of lists (lats x lons) to store scalers for each lat/lon location
         # (re-populated at each level)
         scalers = [[None for _ in range(model_size_lon)] for _ in range(model_size_lat)]
 

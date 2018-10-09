@@ -40,10 +40,10 @@ def score_regression_kneighbors(x_train,
     best_params = None
 
     # create a parameter grid we'll use to parameterize the model at each iteration
-    neighbors = [1, 2, 3, 4, 5, 10, 15, 20, 25]
+    neighbors = [50, 100, 200]
     weights = ['uniform', 'distance']
     algorithms = ['auto', 'ball_tree', 'kd_tree', 'brute']
-    leaf_sizes = [10, 20, 30, 40, 50, 75, 100]
+    leaf_sizes = [10, 30, 50]
     powers = [1, 2]
     jobs = [-1]   # -1 uses all processors
     param_grid = ParameterGrid({'n_neighbors': neighbors,
@@ -55,9 +55,11 @@ def score_regression_kneighbors(x_train,
 
     # iterate over each model parameterization
     for params in param_grid:
+        _logger.info("\t\tFitting/scoring K-Neighbors with parameters: {p}".format(p=params))
         model = KNeighborsRegressor(**params)
         model.fit(x_train, y_train)
         score = model.score(x_test, y_test)
+        _logger.info("\t\t\tScore: {s}".format(s=score))
         if score > best_score:
             best_score = score
             best_params = params
@@ -168,9 +170,9 @@ def score_regression_forest(x_train,
     best_params = None
 
     # create a parameter grid we'll use to parameterize the model at each iteration
-    estimators = [1, 2, 5, 10, 25, 100]
+    estimators = [10, 25, 100, 200]
     criteria = ['mse', 'mae']
-    max_features = [1, 2, 3, 0.5, 0.75, 'auto', 'sqrt', 'log2', None]
+    max_features = [1, 2, 3, 0.5, 0.75, 'auto', 'sqrt', 'log2']
     max_depths = [None, 1, 2, 3, 5, 10, 20]
     min_samples_splits = [2, 5, 10, 0.1, 0.25, 0.5, 0.75]
     min_samples_leafs = [1, 2, 5, 10, 0.1, 0.25, 0.5]
@@ -188,9 +190,11 @@ def score_regression_forest(x_train,
     # iterate over each model parameterization
     for params in param_grid:
         try:
+            _logger.info("\t\tFitting/scoring Random Forest with parameters: {p}".format(p=params))
             model = RandomForestRegressor(**params)
             model.fit(x_train, y_train.values.ravel())
             score = model.score(x_test, y_test)
+            _logger.info("\t\t\tScore: {s}".format(s=score))
             if score > best_score:
                 best_score = score
                 best_params = params
@@ -387,27 +391,29 @@ def score_models(dataset_features,
             _logger.info("    Best parameter set: {params}".format(params=best_params))
             _logger.info("    Best score: {score}".format(score=best_score))
 
-            # only try K-Neighbors if we didn't get a decent score from linear regression
-            if best_score < 0.97:
-                # score the K nearest neighbors regression model using various parameters, log the best results
-                best_score, best_params = score_regression_kneighbors(train_x, train_y, test_x, test_y)
-                _logger.info("KNeighborsRegressor model results:")
-                _logger.info("    Best parameter set: {params}".format(params=best_params))
-                _logger.info("    Best score: {score}".format(score=best_score))
+            # # only try K-Neighbors if we didn't get a decent score from linear regression
+            # if best_score < 0.97:
+            #     # score the K nearest neighbors regression model using various parameters, log the best results
+            #     best_score, best_params = score_regression_kneighbors(train_x, train_y, test_x, test_y)
+            #     _logger.info("KNeighborsRegressor model results:")
+            #     _logger.info("    Best parameter set: {params}".format(params=best_params))
+            #     _logger.info("    Best score: {score}".format(score=best_score))
 
             # # linear regression seems sufficient up to level 10 or so
-            # if lev > 10:
+            # if best_score < 0.97:
             #     # score the ridge regression model using various parameters, log the best results
             #     best_score, best_params = score_regression_ridge(train_x, train_y, test_x, test_y)
             #     _logger.info("Ridge model results:")
             #     _logger.info("    Best parameter set: {params}".format(params=best_params))
             #     _logger.info("    Best score: {score}".format(score=best_score))
 
-            # # score the random forest regression model using various parameters, log the best results
-            # best_score, best_params = score_regression_forest(train_x, train_y, test_x, test_y)
-            # _logger.info("Random Forest model results:")
-            # _logger.info("    Best parameter set: {params}".format(params=best_params))
-            # _logger.info("    Best score: {score}".format(score=best_score))
+            # only try Random Forest if we didn't get a decent score from linear regression
+            if best_score < 0.97:
+                # score the random forest regression model using various parameters, log the best results
+                best_score, best_params = score_regression_forest(train_x, train_y, test_x, test_y)
+                _logger.info("Random Forest model results:")
+                _logger.info("    Best parameter set: {params}".format(params=best_params))
+                _logger.info("    Best score: {score}".format(score=best_score))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

@@ -114,7 +114,7 @@ def train_test_regression_forest(x_train,
     max_features = [1, 2, 3, 0.5, 0.75, 'auto', 'sqrt', 'log2', None]
     max_depths = [None, 1, 2, 3, 5, 10, 20]
     min_samples_splits = [2, 5, 10, 0.1, 0.25, 0.5, 0.75]
-    min_samples_leafs = [1, 2, 5, 10, 0.1, 0.25, 0.5, 0.75]
+    min_samples_leafs = [1, 2, 5, 10, 0.1, 0.25, 0.5]
     bootstraps = [True, False]
     n_jobs = [-1]   # run fit jobs in parallel across all cores
     param_grid = ParameterGrid({'n_estimators': estimators,
@@ -129,8 +129,8 @@ def train_test_regression_forest(x_train,
     # iterate over each model parameterization
     for params in param_grid:
         try:
-            model = Ridge(**params)
-            model.fit(x_train, y_train)
+            model = RandomForestRegressor(**params)
+            model.fit(x_train, y_train.values.ravel())
             score = model.score(x_test, y_test)
             model_scores[score] = params
 
@@ -413,24 +413,24 @@ def score_models(dataset_features,
             print("LinearRegression")
             print("    Best parameter set: {params}".format(params=best_param_set))
             print("    Best score: {score}".format(score=best_score))
-
-            # score the ridge regression model using various parameters
-            score_params = train_test_regression_ridge(train_x, train_y, test_x, test_y)
-
-            best_score = np.max(np.array(list(score_params.keys())))
-            best_param_set = score_params[best_score]
-            print("Ridge")
-            print("    Best parameter set: {params}".format(params=best_param_set))
-            print("    Best score: {score}".format(score=best_score))
-
-            # score the random forest regression model using various parameters
-            score_params = train_test_regression_forest(train_x, train_y, test_x, test_y)
-
-            best_score = np.max(np.array(list(score_params.keys())))
-            best_param_set = score_params[best_score]
-            print("Random Forest")
-            print("    Best parameter set: {params}".format(params=best_param_set))
-            print("    Best score: {score}".format(score=best_score))
+            #
+            # # score the ridge regression model using various parameters
+            # score_params = score_regression_ridge(train_x, train_y, test_x, test_y)
+            #
+            # best_score = np.max(np.array(list(score_params.keys())))
+            # best_param_set = score_params[best_score]
+            # print("Ridge")
+            # print("    Best parameter set: {params}".format(params=best_param_set))
+            # print("    Best score: {score}".format(score=best_score))
+            #
+            # # score the random forest regression model using various parameters
+            # score_params = score_regression_forest(train_x, train_y, test_x, test_y)
+            #
+            # best_score = np.max(np.array(list(score_params.keys())))
+            # best_param_set = score_params[best_score]
+            # print("Random Forest")
+            # print("    Best parameter set: {params}".format(params=best_param_set))
+            # print("    Best score: {score}".format(score=best_score))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -473,23 +473,24 @@ if __name__ == '__main__':
         # init_day = 27
         # timestamps = extract_timestamps(ds_features, init_year, init_month, init_day)
 
-        # # train/fit/score models using the dry features and corresponding labels
-        # features = ['PS', 'T', 'U', 'V']
+        # train/fit/score models using the dry features and corresponding labels
+        features = ['PS', 'T', 'U', 'V']
         # labels = ['PTTEND', 'PUTEND', 'PVTEND']
-        # score_models(ds_features,
-        #              ds_labels,
-        #              features,
-        #              labels)
-
-        # train/fit/score models using the moist features and corresponding labels
-        features = ['PRECL', 'Q']
-        labels = ['SHFLX']
+        labels = ['PTTEND']
         score_models(ds_features,
                      ds_labels,
                      features,
-                     labels,
-                     split_on_hemispheres=True)
+                     labels)
 
+        # # train/fit/score models using the moist features and corresponding labels
+        # features = ['PRECL', 'Q']
+        # labels = ['SHFLX']
+        # score_models(ds_features,
+        #              ds_labels,
+        #              features,
+        #              labels,
+        #              split_on_hemispheres=True)
+        #
         # # train/fit/score models using the dry and moist features and the moist labels
         # features = ['PS', 'T', 'U', 'V', 'PRECL', 'Q']
         # labels = ['SHFLX']

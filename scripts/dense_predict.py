@@ -43,72 +43,26 @@ def pull_vars_into_dataframe(dataset,
             raise ValueError("Unsupported hemisphere argument: {hemi}".format(hemi=hemisphere))
 
     # loop over each variable, adding each into the dataframe
-    for var in variables:
+    for data_var in variables:
 
         # if we have (time, lev, lat, lon), then use level parameter
-        dimensions = dataset.variables[var].dims
+        dimensions = dataset.variables[data_var].dims
         if dimensions == ('time', 'lev', 'lat', 'lon'):
-            values = dataset[var].values[:, level, :, :]
+            values = dataset[data_var].values[:, level, :, :]
         elif dimensions == ('time', 'lat', 'lon'):
-            values = dataset[var].values[:, :, :]
+            values = dataset[data_var].values[:, :, :]
         else:
             raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
 
         series = pd.Series(values.flatten())
 
         # add the series into the dataframe
-        df[var] = series
+        df[data_var] = series
 
     # make sure we have a generic index name
     df.index.rename('index', inplace=True)
 
     return df
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-def split_into_hemisphere_dfs(features_dataset,
-                              labels_dataset,
-                              feature_vars,
-                              label_vars,
-                              level_ix):
-    """
-    Split the features and labels datasets into train and test arrays, using the northern hemisphere
-    for training and the southern hemisphere for testing. Assumes a regular global grid with full
-    northern and southern hemispheres.
-
-    :param features_dataset: xarray.DataSet
-    :param labels_dataset: xarray.DataSet
-    :param feature_vars: list of variables to include from the features DataSet
-    :param label_vars: list of variables to include from the labels DataSet
-    :param level_ix: level coordinate index, assumes a 'lev' coordinate for all specified feature and label variables
-    :return:
-    """
-
-    # make DataFrame from features, using the northern hemisphere for training data
-    train_x = pull_vars_into_dataframe(features_dataset,
-                                       feature_vars,
-                                       level_ix,
-                                       hemisphere='north')
-
-    # make DataFrame from features, using the southern hemisphere for testing data
-    test_x = pull_vars_into_dataframe(features_dataset,
-                                      feature_vars,
-                                      level_ix,
-                                      hemisphere='south')
-
-    # make DataFrame from labels, using the northern hemisphere for training data
-    train_y = pull_vars_into_dataframe(labels_dataset,
-                                       label_vars,
-                                       level_ix,
-                                       hemisphere='north')
-
-    # make DataFrame from labels, using the southern hemisphere for testing data
-    test_y = pull_vars_into_dataframe(labels_dataset,
-                                      label_vars,
-                                      level_ix,
-                                      hemisphere='south')
-
-    return train_x, test_x, train_y, test_y
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -125,8 +79,11 @@ def define_model_dense(num_features,
     # define the model
     dense_model = Sequential()
 
-    # add a single fully-connected hidden layer with the same number of neurons as input attributes (features)
+    # add a fully-connected hidden layer with the same number of neurons as input attributes (features)
     dense_model.add(Dense(num_features, input_dim=num_features, activation='relu'))
+
+    # add a fully-connected hidden layer with the twice the number of neurons as input attributes (features)
+    dense_model.add(Dense(num_features * 2, activation='relu'))
 
     # output layer uses no activation function since we are interested
     # in predicting numerical values directly without transform
@@ -176,17 +133,17 @@ if __name__ == '__main__':
         ds_predict_features = xr.open_mfdataset(paths=args.predict_features)
 
         # confirm that we have learning datasets that match on the time, lev, lat, and lon dimension/coordinate
-        if (ds_learn_features.variables['time'].values != ds_learn_labels.variables['time'].values).any():
+        if np.any(ds_learn_features.variables['time'].values != ds_learn_labels.variables['time'].values):
             raise ValueError('Non-matching time values between feature and label datasets')
-        if (ds_learn_features.variables['lev'].values != ds_learn_labels.variables['lev'].values).any():
+        if np.any(ds_learn_features.variables['lev'].values != ds_learn_labels.variables['lev'].values):
             raise ValueError('Non-matching level values between feature and label datasets')
-        if (ds_learn_features.variables['lat'].values != ds_learn_labels.variables['lat'].values).any():
+        if np.any(ds_learn_features.variables['lat'].values != ds_learn_labels.variables['lat'].values):
             raise ValueError('Non-matching lat values between feature and label datasets')
-        if (ds_learn_features.variables['lon'].values != ds_learn_labels.variables['lon'].values).any():
+        if np.any(ds_learn_features.variables['lon'].values != ds_learn_labels.variables['lon'].values):
             raise ValueError('Non-matching lon values between feature and label datasets')
 
         # we assume the same number of levels in the prediction data as we have in the learning data
-        if (ds_learn_features.variables['lev'].values != ds_predict_features.variables['lev'].values).any():
+        if np.any(ds_learn_features.variables['lev'].values != ds_predict_features.variables['lev'].values):
             raise ValueError('Non-matching level values between train and predict feature datasets')
 
         # trim out all non-relevant data variables from the datasets
@@ -200,7 +157,8 @@ if __name__ == '__main__':
             if var not in features:
                 ds_predict_features = ds_predict_features.drop(var)
 
-        # get the shape of the 4-D array we'll use for the predicted variable(s) data array
+        # get the shape of the 4-D array we'll use for the predicted variable(s) data array,
+        # which will match the dimensions of the input features dataset used for prediction
         out_size_time = ds_predict_features.time.size
         out_size_lev = ds_predict_features.lev.size
         out_size_lat = ds_predict_features.lat.size
@@ -214,35 +172,28 @@ if __name__ == '__main__':
         model.summary()
 
         # loop over each level, keeping a record of the error rate for each level, for later visualization
-        level_error_rates = {}
         for lev in range(out_size_lev):
 
-            # split the data into train/test datasets using a north/south 50/50 split
-            train_x, test_x, train_y, test_y = split_into_hemisphere_dfs(ds_learn_features,
-                                                                         ds_learn_labels,
-                                                                         features,
-                                                                         labels,
-                                                                         level_ix=lev)
+            # make DataFrame from features, for training data
+            train_x = pull_vars_into_dataframe(ds_learn_features,
+                                               features,
+                                               lev)
+
+            # make DataFrame from labels, for training data
+            train_y = pull_vars_into_dataframe(ds_learn_labels,
+                                               labels,
+                                               lev)
 
             # scale the data into a (0..1) range since this will optimize the neural network's performance
             scaler_x = MinMaxScaler(feature_range=(0, 1))
             scaler_y = MinMaxScaler(feature_range=(0, 1))
 
-            # fit to both hemispheres
-            scaler_x.fit(pd.concat([train_x, test_x]))
-            scaler_y.fit(pd.concat([train_y, test_y]))
-
             # perform scaling
-            train_x_scaled = scaler_x.transform(train_x)
-            train_y_scaled = scaler_y.transform(train_y)
-            test_x_scaled = scaler_x.transform(test_x)
-            test_y_scaled = scaler_y.transform(test_y)
+            train_x_scaled = scaler_x.fit_transform(train_x)
+            train_y_scaled = scaler_y.fit_transform(train_y)
 
             # train the model for this level
-            model.fit(train_x_scaled, train_y_scaled, epochs=2, shuffle=True, verbose=2)
-
-            # evaluate the model's fit
-            level_error_rates[lev] = model.evaluate(test_x_scaled, test_y_scaled)
+            model.fit(train_x_scaled, train_y_scaled, epochs=3, shuffle=True, verbose=0)
 
             # get the new features from which we'll predict new label(s), using the same scaler as was used for training
             predict_x = pull_vars_into_dataframe(ds_predict_features,
@@ -273,7 +224,7 @@ if __name__ == '__main__':
                                           attrs=ds_learn_labels[labels[0]].attrs)
         ds_predict_labels[labels[0]] = predicted_label_var
 
-        # write the predicted label(s)' dataset as NetCDF
+        # write the predicted label(s)' dataset as a NetCDF file
         ds_predict_labels.to_netcdf(args.predict_labels)
 
         # placeholder for debugging steps

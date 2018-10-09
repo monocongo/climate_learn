@@ -213,8 +213,11 @@ if __name__ == '__main__':
         # display the model summary
         model.summary()
 
+        performing_evaluation = False
+        if performing_evaluation:
+            level_error_rates = {}
+
         # loop over each level, keeping a record of the error rate for each level, for later visualization
-        level_error_rates = {}
         for lev in range(out_size_lev):
 
             # split the data into train/test datasets using a north/south 50/50 split
@@ -244,40 +247,10 @@ if __name__ == '__main__':
             # evaluate the model's fit
             level_error_rates[lev] = model.evaluate(test_x_scaled, test_y_scaled)
 
-            # get the new features from which we'll predict new label(s), using the same scaler as was used for training
-            predict_x = pull_vars_into_dataframe(ds_predict_features,
-                                                 features,
-                                                 lev)
-            predict_x_scaled = scaler_x.transform(predict_x)
-
-            # use the model to predict label values from new inputs
-            predict_y_scaled = model.predict(predict_x_scaled, verbose=1)
-
-            # unscale the data, using the same scaler as was used for training
-            predict_y = scaler_y.inverse_transform(predict_y_scaled)
-
-            # write the predicted values for the level into the predicted label's data array
-            prediction[:, lev, :, :] = np.reshape(predict_y, newshape=(out_size_time, out_size_lat, out_size_lon))
-
-        # copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
-        ds_predict_labels = ds_predict_features.copy(deep=True)
-
-        # remove all non-label data variables from the predictions dataset
-        for var in ds_predict_labels.data_vars:
-            if var not in labels:
-                ds_predict_labels = ds_predict_labels.drop(var)
-
-        # create a new variable to contain the predicted label, assign it into the prediction dataset
-        predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
-                                          data=prediction,
-                                          attrs=ds_learn_labels[labels[0]].attrs)
-        ds_predict_labels[labels[0]] = predicted_label_var
-
-        # write the predicted label(s)' dataset as NetCDF
-        ds_predict_labels.to_netcdf(args.predict_labels)
-
         # placeholder for debugging steps
         pass
+
+        # visualization code (matplotlib/seaborn) here for analysis of the evaluations performed above
 
     except Exception:
 
