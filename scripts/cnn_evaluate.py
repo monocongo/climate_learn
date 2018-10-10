@@ -2,9 +2,10 @@ import argparse
 import logging
 
 from keras.models import Sequential
-from keras.layers import Conv3D, Dense, MaxPooling3D
+from keras.layers import Conv3D, Dense
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from sklearn.preprocessing import MinMaxScaler
 import xarray as xr
 
@@ -138,11 +139,8 @@ def define_model_cnn(num_times,
                          input_shape=(num_times, num_lats, num_lons, num_features),
                          padding='same'))
 
-    # add a pooling layer
-    cnn_model.add(MaxPooling3D(pool_size=(2, 2, 2),
-                               strides=(1, 1, 1),
-                               padding='valid',
-                               data_format="channels_last"))
+    # add a fully-connected hidden layer with twice the number of neurons as input attributes (features)
+    cnn_model.add(Dense(num_features * 2, activation='relu'))
 
     # output layer uses no activation function since we are interested
     # in predicting numerical values directly without transform
@@ -172,6 +170,9 @@ if __name__ == '__main__':
         parser.add_argument("--learn_labels",
                             help="NetCDF files containing time tendency forcing variables used to train/test the model",
                             nargs='*',
+                            required=True)
+        parser.add_argument("--plot_file",
+                            help="Analysis plot image file name",
                             required=True)
         args = parser.parse_args()
 
@@ -250,15 +251,19 @@ if __name__ == '__main__':
             test_y = np.reshape(test_y, newshape=(1, size_time, size_lat, size_lon, len(labels)))
 
             # train the model for this level
-            model.fit(train_x, train_y, epochs=4, shuffle=True, verbose=2)
+            model.fit(train_x, train_y, shuffle=True, epochs=8, verbose=2)
 
             # evaluate the model's fit
             level_error_rates[lev] = model.evaluate(test_x, test_y)
 
-        # placeholder for debugging steps
-        pass
-
         # visualization code (matplotlib/seaborn) here for analysis of the evaluations performed above
+        df = pd.DataFrame(list(level_error_rates.items()), columns=["level", "loss"])
+        sns.set_style("darkgrid")
+        sns_plot = sns.lineplot(x="level", y="loss", data=df)
+        sns_plot.get_figure().savefig(args.plot_file)
+
+        # place holder for debugging step
+        pass
 
     except Exception:
 
