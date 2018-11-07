@@ -1,0 +1,29 @@
+#!/bin/sh
+#PBS -S /bin/sh
+#PBS -l procs=1,mem=1gb,walltime=1:00:00
+#PBS -m abe
+#PBS -V
+#####  Flux-Specific variables #####
+#PBS -A cjablonoproject_flux
+#PBS -l qos=preempt
+#PBS -q flux
+##### Edit these below: #####
+#PBS -N <name_your_job>
+#PBS -M <uniquename>@umich.edu
+
+echo "I ran on:"
+cat $PBS_NODEFILE
+cd ~/ml_repo/flux_runs/<run_results_dir_name> 
+
+# Run the job
+$HOME/<model_learn_repo>/scripts/run_dense.py \ 
+    /scratch/climate_flux/cjablono/james/<cam_run_dir> \ # For now, CAM outputs are located here. Choose a run.
+    $HOME/<model_learn_repo>/<results_dir_name> \
+    <train_features_1> <train_features_2> <train_features_3> <...> \ # files used as feature inputs for model training
+    <train_labels_1>,<train_labels_2>,<train_labels_3>,...] \ # files used as label inputs for model training
+    <predict_features_1> <...> \ # files used as feature inputs for model prediction
+    <predict_labels_1> <...> \ # files used as label outputs for model prediction (files we output)
+    <cam_output_1_of_predicted_label> <...> \ # CAM outputs corresponding to the input features used for prediction
+#     --features PS T U V <f1> <f2> <...> \
+#     --labelss PTTEND <...> \
+    ##### Add additional argument options as they are added to /scripts/run_dense.py #####

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-
-import dense_mod
+# run 'chmod +x run_dense.py' on command line before using this script.
 import argparse
 import numpy as np
 import xarray as xr
@@ -8,26 +7,33 @@ from keras.models import Sequential
 from keras.layers import Dense
 
 parser = argparse.ArgumentParser(description="Script for running Dense Layer Neural Network Machine "+
-                                 "Learning model for climate models.")
+                                 "Learning model for climate models. Remember to run 'chmod +x run_dense.py'"+
+                                 " on command line before using this script.")
 
-parser.add_argument('data_dir',          type=str,  help='<help_description>')
-parser.add_argument('result_dir',        type=str,  help='<help_description>')
-parser.add_argument('train_features',    type=list, help='<help_description>')
-parser.add_argument('train_labels',      type=list, help='<help_description>')
-parser.add_argument('predict_features',  type=list, help='<help_description>')
-parser.add_argument('labels',            type=list, help='<help_description>')
-parser.add_argument('features',          type=list, default=["PS", "T", "U", "V"],
+parser.add_argument('data_dir', type=str, 
+                    help='Path to the directory containing data.')
+parser.add_argument('result_dir', type=str, 
+                    help='Path to the directory to write our predicted data.')
+parser.add_argument('train_features', type=str, nargs='+',
+                    help='List of file names of training features data inside data_dir. Separate files with spaces.')
+parser.add_argument('train_labels', type=str, nargs='+',
+                    help='List of file names of training labels data inside data_dir.')
+parser.add_argument('predict_features', type=str, nargs='+',
+                    help='List of file names of predicted features data inside data_dir.')
+parser.add_argument('predict_labels', type=str, nargs='+',
+                    help='List of file names to output  predicted labels data to inside result_dir.')
+parser.add_argument('cam_labels', type=str, nargs='+',
+                    help='List of file names of CAM output labels of predicted data inside data_dir.')
+parser.add_argument('--features', type=str, default=["PS", "T", "U", "V"],
                     help='<help_description>')
-parser.add_argument('labels',     type=list,default=["PTTEND"],
+parser.add_argument('--labels', type=list, default=["PTTEND"],
                     help='<help_description>')
-parser.add_argument('cam_labels',     type=str,help='<help_description>')
-# parser.add_argument('<arg_name>',    type=str,help='<help_description>')
-# parser.add_argument('<arg_name>', type=str,help='<help_description>')
-# parser.add_argument('<arg_name>', type=str,help='<help_description>')
-# parser.add_argument('<arg_name>', type=str,help='<help_description>')
+# parser.add_argument('<arg_name>', type=str,
+#                     help='<help_description>')
 
 args = parser.parse_args()
 
+#Append data_dir and result_dir to appropriate files.
 for nf in range(len(args.train_features)):
     args.train_features[nf] = args.data_dir + args.train_features[nf]
     args.train_labels[nf] = args.data_dir + args.train_labels[nf]
