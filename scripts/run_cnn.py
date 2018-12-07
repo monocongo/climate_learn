@@ -25,7 +25,8 @@ import argparse
 import numpy as np
 import xarray as xr
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Conv3D
+from ml_funcs import extrac_data_array, extract_features_labels, scale_4d
 
 parser = argparse.ArgumentParser(description="Script for running Dense Layer Neural Network Machine "+
                                  "Learning model for climate models. Remember to run 'chmod +x run_dense.py'"+
@@ -75,7 +76,7 @@ for lev in range(1,size_lev):
     print("Training/predicting for level {level}".format(level=lev))
     
     # get the features and labels for training
-    train_x, train_y = extract_features_labels(netcdf_features_train[0], Why only the first file?
+    train_x, train_y = extract_features_labels(netcdf_features_train[0],  # Why only the first file??
                                                netcdf_labels_train[0],
                                                features,
                                                labels,
@@ -99,7 +100,7 @@ for lev in range(1,size_lev):
     scalers_y = [MinMaxScaler(feature_range=(0, 1))] * len(labels)
     scaled_train_x, scaled_predict_x, scaled_train_y, scalers_x, scalers_y = \
         scale_4d(train_x, predict_x, train_y, scalers_x, scalers_y)
-    
+
     if (lev == 1) :
         # define the model
         cnn_model = Sequential()
@@ -112,46 +113,42 @@ for lev in range(1,size_lev):
                              input_shape=(size_times_train, size_lat, size_lon, len(features)),
                              padding='same'))
 
-        # add a fully-connected hidden layer with the same number of neurons as input attributes (features)
-        dense_model.add(Dense(len(features), input_dim=len(features), activation='relu'))
-
         # add a fully-connected hidden layer with twice the number of neurons as input attributes (features)
         cnn_model.add(Dense(len(features) * 2, activation='relu'))
-        
+
         # output layer uses no activation function since we are interested
         # in predicting numerical values directly without transform
         cnn_model.add(Dense(len(labels)))
-        
+
         # compile the model using the ADAM optimization algorithm and a mean squared error loss function
         cnn_model.compile(optimizer='adam', loss='mse')
 
         # display some summary information
         cnn_model.summary()
 
-
-    # reshape the data for dense layer model input
-    shape_x = (size_times_train * size_lat * size_lon, len(features))
-    shape_y = (size_times_train * size_lat * size_lon, len(labels))
-    train_x_dense = np.reshape(scaled_train_x, newshape=shape_x)
-    train_y_dense = np.reshape(scaled_train_y, newshape=shape_y)
-    predict_x_dense = np.reshape(scaled_predict_x, newshape=shape_x)
-    
+    # reshape the data for convolutional model input
+    shape_x = (1, ) + scaled_train_x.shape
+    shape_y = (1, ) + scaled_train_y.shape
+    train_x_cnn = np.reshape(scaled_train_x, newshape=shape_x)
+    train_y_cnn = np.reshape(scaled_train_y, newshape=shape_y)
+    predict_x_cnn = np.reshape(scaled_predict_x, newshape=shape_x)
+        
     # train the models
-    dense_model.fit(train_x_dense, train_y_dense, shuffle=True, epochs=8, verbose=2)
+    cnn_model.fit(train_x_cnn, train_y_cnn, shuffle=True, epochs=8, verbose=2)
     
     # use the fitted models to make predictions
-    predict_y_scaled_dense = dense_model.predict(predict_x_dense, verbose=1)
+    predict_y_scaled_cnn = cnn_model.predict(predict_x_cnn, verbose=1)
 
     # reverse the scaling of the predicted values
     # TODO below assumes a single label, will need modification for multiple labels
     scaler = scalers_y[0]  # assumes the label scaler was fitted in scale_4d() and side effect carried through
-
-    # output from the dense model is 2-D, good for scaler input
-    unscaled_predict_y_dense = scaler.inverse_transform(predict_y_scaled_dense)
+        
+    # output from CNN model is 5-D, so we'll flatten first to make it amenable to scaling
+    unscaled_predict_y_cnn = scaler.inverse_transform(predict_y_scaled_cnn.flatten().reshape(-1, 1))
     
     # reshape data so it's compatible with assignment into prediction arrays
     level_shape = (size_times_predict, size_lat, size_lon)
-    prediction_dense[:, lev, :, :] = np.reshape(unscaled_predict_y_dense, newshape=level_shape)
+    prediction_cnn[:, lev, :, :] = np.reshape(unscaled_predict_y_cnn, newshape=level_shape)
 
 # copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
 ds_predict_labels = xr.open_dataset(args.data_dir + args.cam_labels)
@@ -163,18 +160,18 @@ for var in ds_predict_labels.data_vars:
 
 # create new variables to contain the predicted labels, assign these into the prediction dataset
 predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
-                                  data=prediction_dense,
+                                  data=prediction_cnn,
                                   attrs=ds_predict_labels[labels[0]].attrs)
-ds_predict_labels[labels[0] + "_dense"] = predicted_label_var
+ds_predict_labels[labels[0] + "_cnn"] = predicted_label_var
 
 # open the dataset containing the computed label values corresponding to the input features used for prediction
 ds_cam_labels = xr.open_dataset(data_dir + "/fv091x180L26_moist_HS.cam.h1.2001-02-25-00000_lowres.nc")
 
 # get the differences between computed and predicted values
-pttend_diff_dense = ds_cam_labels[labels[0]].values - prediction_dense
+pttend_diff_cnn = ds_cam_labels[labels[0]].values - prediction_cnn
 
 # create the variables and add to the dataset
 predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
-                                  data=pttend_diff_dense,
+                                  data=pttend_diff_cnn,
                                   attrs=ds_predict_labels[labels[0]].attrs)
-ds_predict_labels[labels[0] + "_dense_diff"] = predicted_label_var
+ds_predict_labels[labels[0] + "_cnn_diff"] = predicted_label_var
