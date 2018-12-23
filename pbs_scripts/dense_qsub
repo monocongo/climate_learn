@@ -1,0 +1,15 @@
+#!/bin/bash -l
+#SBATCH -J run_dense_test
+#SBATCH -n 1
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem=8G
+#SBATCH -t 05:00:00
+#SBATCH -A UMIC0060
+#SBATCH -p dav
+#SBATCH -e run_dense_test.err.%J
+#SBATCH -o run_dense_test.out.%J
+
+export TMPDIR=/glade/scratch/$USER/temp
+mkdir -p $TMPDIR
+
+srun ../scripts/run_dense.py /glade/scratch/cjablono/fv091x180L26_dry_HS/ ../results/run_dense_test/ -training_features fv091x180L26_dry_HS.cam.h0.2000-12-27-00000.nc -testing_features fv091x180L26_dry_HS.cam.h0.2001-01-11-00000.nc 

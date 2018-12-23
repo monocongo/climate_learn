@@ -16,7 +16,9 @@ To use this script, you must have the Python libraries 'xarray' and 'keras' inst
 of their dependencies. You may do this with your own local version of a miniconda install (see install 
 directions at: https://conda.io/docs/user-guide/install/linux.html), or you may simply add the line: 
     export PATH="/glade/u/home/glimon/miniconda3/bin:$PATH" 
-to your .bashrc file in your home directory on Cheyenne. 
+to your .bashrc file in your home directory on Cheyenne. You must also run the comand:
+    source .bashrc 
+before running both on Cheyenne and Casper.
 This script is meant to be run on one of Cheyenne's Data Analysis and Visualization (DAV) systems, such as Casper. 
 See: 
     https://www2.cisl.ucar.edu/resources/computational-systems/geyser-and-caldera/using-data-analysis-and-visualization-clusters 
@@ -42,10 +44,10 @@ parser.add_argument('data_dir', type=str,
                     help='Path to the directory containing data.')
 parser.add_argument('result_dir', type=str, 
                     help='Path to the directory to write our predicted data.')
-parser.add_argument('training_features', type=str, nargs='+', 
+parser.add_argument('-training_features', type=str, nargs='+', 
                     help='List of file names of training features data inside data_dir. Corresponding to .h0. '+
                     '<name> files. Separate files with spaces.')
-parser.add_argument('testing_features', type=str, nargs='+', 
+parser.add_argument('-testing_features', type=str, nargs='+', 
                     help='List of file names of predicted features data inside data_dir. Corresponding to .h0. ' +
                     ' <name> files. Separate files with spaces.')
 parser.add_argument('--features', type=str, nargs='+', default="PS T U V",
@@ -89,7 +91,7 @@ netcdf_labels_predicted = {}
 netcdf_labels_cam = {}
 
 #Append data_dir and result_dir to appropriate files.
-for nf in range(len(args.train_features)):
+for nf in range(len(args.training_features)):
     netcdf_features_train[nf] = args.data_dir + args.training_features[nf]
     netcdf_labels_train[nf] = netcdf_features_train[nf].replace('.h0.','.h1.')
 for nf in range(len(args.testing_features)):
