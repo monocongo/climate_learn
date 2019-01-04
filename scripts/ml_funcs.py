@@ -80,12 +80,18 @@ def scale_4d(features_train,
              features_predict,
              labels_train,
              scalers_feature,
-             scalers_label):
+             scalers_label,
+             labels):
     
     # make new arrays to contain the scaled values we'll return
     scaled_features_train = np.empty(shape=features_train.shape)
     scaled_features_predict = np.empty(shape=features_predict.shape)
     scaled_labels_train = np.empty(shape=labels_train.shape)
+    size_times_train = features_train.shape[0]
+    size_times_predict = features_predict.shape[0]
+    size_lat = features_train.shape[1]
+    size_lon = features_train.shape[2]
+
     
     # data is 4-D with shape (times, lats, lons, vars), scalers can only work on 2-D arrays,
     # so for each feature we scale the corresponding 3-D array of values after flattening it,
