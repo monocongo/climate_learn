@@ -103,9 +103,11 @@ for nf in range(len(args.train_features)):
     netcdf_labels_train[nf] = netcdf_features_train[nf].replace('.h0.','.h1.')
 for nf in range(len(args.testing_features)):
     flnm = args.testing_features[nf]
-    netcdf_features_predict[nf] = args.data_dir + flm
-    netcdf_labels_cam[nf] = args.data_dir + flm.replace('.h0.','.h1.')
-    netcdf_labels_predicted[nf] = args.result_dir + flm.replace('.h0.','.h1.')[0:length(flnm)-3]+'_predicted.nc'
+    netcdf_features_predict[nf] = args.data_dir + flnm
+    netcdf_labels_cam[nf] = args.data_dir + flnm.replace('.h0.','.h1.')
+    netcdf_labels_predicted[nf] = args.result_dir + flnm.replace('.h0.','.h1.')[0:length(flnm)-3]+'_predicted.nc'
+
+size_lev = xr.open_dataset(netcdf_features_predict[0]).lev.size #Zero right now because only one file
 
 # loop over all levels
 for lev in range(1,size_lev):
@@ -115,13 +117,13 @@ for lev in range(1,size_lev):
     # get the features and labels for training
     train_x, train_y = extract_features_labels(netcdf_features_train[0], #Zero right now because only one file
                                                netcdf_labels_train[0], #Zero right now because only one file
-                                               features,
-                                               labels,
+                                               args.features,
+                                               args.labels,
                                                lev)
     
     # get the features for prediction
     predict_x = extract_data_array(xr.open_dataset(netcdf_features_predict[0]), #Zero right now because only one file
-                                   features,
+                                   args.features,
                                    lev)
 
     # I added this, James did not seem to have this in the loop and just kept
@@ -130,13 +132,12 @@ for lev in range(1,size_lev):
     size_times_predict = predict_x.shape[0]
     size_lat = train_x.shape[1]
     size_lon = train_x.shape[2]
-    size_lev = xr.open_dataset(predict_features[0]).lev.size #Zero right now because only one file
 
     # scale the data between 0 and 1
-    scalers_x = [MinMaxScaler(feature_range=(0, 1))] * len(features)
-    scalers_y = [MinMaxScaler(feature_range=(0, 1))] * len(labels)
+    scalers_x = [MinMaxScaler(feature_range=(0, 1))] * len(args.features)
+    scalers_y = [MinMaxScaler(feature_range=(0, 1))] * len(args.labels)
     scaled_train_x, scaled_predict_x, scaled_train_y, scalers_x, scalers_y = \
-        scale_4d(train_x, predict_x, train_y, scalers_x, scalers_y)
+        scale_4d(train_x, predict_x, train_y, scalers_x, scalers_y, args.labels)
     
     if (lev == 1) : # create the model only once.
         # define the model
@@ -148,15 +149,15 @@ for lev in range(1,size_lev):
                          activation=args.activation_function,
                          data_format=args.data_format,
                          input_shape=(size_times_train, size_lat, 
-                                      size_lon, len(features)),
+                                      size_lon, len(args.features)),
                          padding=args.padding))
 
         # add a fully-connected hidden layer with twice the number of neurons as input attributes (features)
-        model.add(Dense(len(features) * 2, activation=args.activation_function))
+        model.add(Dense(len(args.features) * 2, activation=args.activation_function))
         
         # output layer uses no activation function since we are interested
         # in predicting numerical values directly without transform
-        model.add(Dense(len(labels)))
+        model.add(Dense(len(args.labels)))
         
         # compile the model using the ADAM optimization algorithm and a mean squared error loss function
         model.compile(optimizer=args.optimizer, loss=args.loss_function)
@@ -205,10 +206,9 @@ predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
                                   attrs=ds_predict_labels[labels[0]].attrs)
 ds_predict_labels[labels[0]] = predicted_label_var
 
-# open the dataset containing the computed label values corresponding to the input features used for prediction
-ds_cam_labels = xr.open_dataset(netcdf_labels_cam[0]) # This is hard coded to the zeroth because current
-                                                       # implementation only has one file, need to revisit this.
-
 # write the predicted label(s)' dataset as a NetCDF file
 ds_predict_labels.to_netcdf(netcdf_labels_predicted[0]) #Zero right now because only one file
 
+# # open the dataset containing the computed label values corresponding to the input features used for prediction
+# ds_cam_labels = xr.open_dataset(netcdf_labels_cam[0]) # This is hard coded to the zeroth because current
+#                                                        # implementation only has one file, need to revisit this.

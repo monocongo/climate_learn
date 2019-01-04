@@ -1,7 +1,4 @@
 #!/usr/bin/env python
-# import sys
-# import os
-# sys.path.append("/glade/u/home/glimon/miniconda3")
 import argparse
 import numpy as np
 import xarray as xr
@@ -53,10 +50,10 @@ parser.add_argument('-training_features', type=str, nargs='+',
 parser.add_argument('-testing_features', type=str, nargs='+', 
                     help='List of file names of predicted features data inside data_dir. Corresponding to .h0. ' +
                     ' <name> files. Separate files with spaces.')
-parser.add_argument('--features', type=str, nargs='+', default=["PS", "T", "U", "V"],
+parser.add_argument('--features', type=str, nargs='+', default="PS T U V",
                     help='Choices of "features." Dynamics variables are chosen as default and used to predict '+
                     'physical tendancies.')
-parser.add_argument('--labels', type=list, nargs='+', default=["PTTEND"],
+parser.add_argument('--labels', type=list, nargs='+', default="PTTEND",
                     help='Choices of "labels." Physical tendancies that are to be predicted from the '+
                     'dynamics variables.')
 parser.add_argument('--activation_function', type=str, default="relu",
