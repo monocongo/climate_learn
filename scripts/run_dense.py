@@ -50,10 +50,10 @@ parser.add_argument('-training_features', type=str, nargs='+',
 parser.add_argument('-testing_features', type=str, nargs='+', 
                     help='List of file names of predicted features data inside data_dir. Corresponding to .h0. ' +
                     ' <name> files. Separate files with spaces.')
-parser.add_argument('--features', type=str, nargs='+', default="PS T U V",
+parser.add_argument('--features', type=str, nargs='+', default=["PS", "T", "U", "V"],
                     help='Choices of "features." Dynamics variables are chosen as default and used to predict '+
                     'physical tendancies.')
-parser.add_argument('--labels', type=list, nargs='+', default="PTTEND",
+parser.add_argument('--labels', type=list, nargs='+', default=["PTTEND"],
                     help='Choices of "labels." Physical tendancies that are to be predicted from the '+
                     'dynamics variables.')
 parser.add_argument('--activation_function', type=str, default="relu",
@@ -186,14 +186,14 @@ ds_predict_labels = xr.open_dataset(netcdf_features_predict[0]) #Zero right now 
 
 # remove all non-label data variables from the predictions dataset
 for var in ds_predict_labels.data_vars:
-    if var not in labels:
+    if var not in args.labels:
         ds_predict_labels = ds_predict_labels.drop(var)
 
 # create new variables to contain the predicted labels, assign these into the prediction dataset
 predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
                                   data=prediction,
-                                  attrs=ds_predict_labels[labels[0]].attrs)
-ds_predict_labels[labels[0]] = predicted_label_var
+                                  attrs=ds_predict_labels[args.labels[0]].attrs)
+ds_predict_labels[args.labels[0]] = predicted_label_var
 
 # write the predicted label(s)' dataset as a NetCDF file
 ds_predict_labels.to_netcdf(netcdf_labels_predicted[0]) #Zero right now because only one file

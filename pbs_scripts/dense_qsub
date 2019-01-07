@@ -3,11 +3,12 @@
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=8G
-#SBATCH -t 05:00:00
+#SBATCH -t 24:00:00
 #SBATCH -A UMIC0060
 #SBATCH -p dav
 #SBATCH -e run_dense_test.err.%J
 #SBATCH -o run_dense_test.out.%J
+#SBATCH -C v100
 
 export TMPDIR=/glade/scratch/$USER/temp
 mkdir -p $TMPDIR
