@@ -182,7 +182,7 @@ for lev in range(1,size_lev):
 # need to figure out what is happening under here.
 
 #copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
-ds_predict_labels = xr.open_dataset(netcdf_features_predict[0]) #Zero right now because only one file
+ds_predict_labels = xr.open_dataset(netcdf_labels_cam[0]) #Zero right now because only one file
 
 # remove all non-label data variables from the predictions dataset
 for var in ds_predict_labels.data_vars:

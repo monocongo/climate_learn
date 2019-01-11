@@ -6,6 +6,7 @@ import xarray as xr
 from keras.models import Sequential
 from keras.layers import Dense, Conv3D
 from ml_funcs import extract_data_array, extract_features_labels, scale_4d
+from sklearn.preprocessing import MinMaxScaler
 
 parser = argparse.ArgumentParser(description= """ \n
 This script illustrates the process of creating simple neural network models using the Keras framework, 
@@ -43,10 +44,10 @@ parser.add_argument('data_dir', type=str,
                     help='Path to the directory containing data.')
 parser.add_argument('result_dir', type=str, 
                     help='Path to the directory to write our predicted data.')
-parser.add_argument('training_features', type=str, nargs='+', 
+parser.add_argument('-training_features', type=str, nargs='+', 
                     help='List of file names of training features data inside data_dir. Corresponding to .h0. '+
                     '<name> files. Separate files with spaces.')
-parser.add_argument('testing_features', type=str, nargs='+', 
+parser.add_argument('-testing_features', type=str, nargs='+', 
                     help='List of file names of predicted features data inside data_dir. Corresponding to .h0. ' +
                     ' <name> files. Separate files with spaces.')
 parser.add_argument('--features', type=str, nargs='+', default=["PS","T","U","V"],
@@ -78,7 +79,7 @@ parser.add_argument('--epochs', type=int, default=100,
 parser.add_argument('--shuffle', type=str, default="true",
                     help='Whether or not to shuffle the data in the neural net, for most cases, this should be '+
                     'lefts as the default "true"')
-parser.add_argument('--verbose_fit', type=int, default=0,
+parser.add_argument('--verbose_fit', type=int, default=2,
                     help='Verbosity during the fitting.')
 parser.add_argument('--verbose_predict', type=int, default=0,
                     help='Neural Net activation function to be used. See Keras documentation to see alternate '+
@@ -94,18 +95,19 @@ else:
 netcdf_features_train = {}
 netcdf_labels_train = {}
 netcdf_features_predict = {}
+netcdf_labels_predict = {}
 netcdf_labels_predicted = {}
-netcdf_labels_cam = {}
+
 
 #Append data_dir and result_dir to appropriate files.
-for nf in range(len(args.train_features)):
+for nf in range(len(args.training_features)):
     netcdf_features_train[nf] = args.data_dir + args.training_features[nf]
     netcdf_labels_train[nf] = netcdf_features_train[nf].replace('.h0.','.h1.')
 for nf in range(len(args.testing_features)):
     flnm = args.testing_features[nf]
     netcdf_features_predict[nf] = args.data_dir + flnm
-    netcdf_labels_cam[nf] = args.data_dir + flnm.replace('.h0.','.h1.')
-    netcdf_labels_predicted[nf] = args.result_dir + flnm.replace('.h0.','.h1.')[0:length(flnm)-3]+'_predicted.nc'
+    netcdf_labels_predict[nf] = args.data_dir + flnm.replace('.h0.','.h1.')
+    netcdf_labels_predicted[nf] = args.result_dir + flnm.replace('.h0.','.h1.')[0:len(flnm)-3]+'_predicted.nc'
 
 size_lev = xr.open_dataset(netcdf_features_predict[0]).lev.size #Zero right now because only one file
 
@@ -145,7 +147,7 @@ for lev in range(1,size_lev):
 
         # add an initial 3-D convolutional layer
         model.add(Conv3D(filters=args.filters,
-                         kernel_size=kernelSize,
+                         kernel_size=args.kernel_size,
                          activation=args.activation_function,
                          data_format=args.data_format,
                          input_shape=(size_times_train, size_lat, 
@@ -153,7 +155,7 @@ for lev in range(1,size_lev):
                          padding=args.padding))
 
         # add a fully-connected hidden layer with twice the number of neurons as input attributes (features)
-        model.add(Dense(len(args.features) * 2, activation=args.activation_function))
+        model.add(Dense(len(args.features) * 4, activation=args.activation_function))
         
         # output layer uses no activation function since we are interested
         # in predicting numerical values directly without transform
@@ -175,7 +177,8 @@ for lev in range(1,size_lev):
     
     # train the models
     model.fit(train_x, train_y, shuffle=shuff, epochs=int(args.epochs), verbose=args.verbose_fit)
-    
+    prediction = np.empty(shape=(size_times_predict, size_lev, size_lat, size_lon))    
+
     # use the fitted models to make predictions
     predict_y_scaled = model.predict(predict_x, verbose=args.verbose_predict)
 
@@ -184,16 +187,14 @@ for lev in range(1,size_lev):
     scaler = scalers_y[0]  # assumes the label scaler was fitted in scale_4d() and side effect carried through
 
     # output from the dense model is 2-D, good for scaler input
-    unscaled_predict_y = scaler.inverse_transform(predict_y_scaled)
+    unscaled_predict_y = scaler.inverse_transform(predict_y_scaled.flatten().reshape(-1, 1))
     
     # reshape data so it's compatible with assignment into prediction arrays
     level_shape = (size_times_predict, size_lat, size_lon)
     prediction[:, lev, :, :] = np.reshape(unscaled_predict_y, newshape=level_shape)
 
-# need to figure out what is happening under here.
-
 #copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
-ds_predict_labels = xr.open_dataset(netcdf_features_predict[0]) #Zero right now because only one file
+ds_predict_labels = xr.open_dataset(netcdf_labels_predict[0]) #Zero right now because only one file
 
 # remove all non-label data variables from the predictions dataset
 for var in ds_predict_labels.data_vars:

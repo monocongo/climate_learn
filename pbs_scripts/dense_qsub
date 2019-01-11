@@ -14,4 +14,4 @@ export TMPDIR=/glade/scratch/$USER/temp
 mkdir -p $TMPDIR
 
 source ~/.bashrc
-srun ../scripts/run_dense.py /glade/scratch/cjablono/fv091x180L26_dry_HS/ ../results/run_dense_test/ -training_features fv091x180L26_dry_HS.cam.h0.2000-12-27-00000.nc -testing_features fv091x180L26_dry_HS.cam.h0.2001-01-11-00000.nc --epochs 4
+srun ../scripts/run_dense.py /glade/scratch/cjablono/fv091x180L26_dry_HS/ ../results/dense/ -training_features fv091x180L26_dry_HS.cam.h0.2000-12-27-00000.nc -testing_features fv091x180L26_dry_HS.cam.h0.2001-01-11-00000.nc --epochs 4
