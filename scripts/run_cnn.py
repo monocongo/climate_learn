@@ -53,10 +53,10 @@ parser.add_argument('-testing_features', type=str, nargs='+',
 parser.add_argument('--features', type=str, nargs='+', default=["PS","T","U","V"],
                     help='Choices of "features." Dynamics variables are chosen as default and used to predict '+
                     'physical tendancies.')
-parser.add_argument('--labels', type=list, nargs='+', default=["PTTEND"],
+parser.add_argument('--labels', type=str, nargs='+', default=["PTTEND"],
                     help='Choices of "labels." Physical tendancies that are to be predicted from the '+
                     'dynamics variables.')
-parser.add_argument('--activation_function', type=str, default="relu",
+parser.add_argument('--activation_function', type=str, default="tanh",
                     help='Neural Net activation function to be used. See Keras documentation to see alternate '+
                     'choices.')
 parser.add_argument('--optimizer', type=str, default="adam",
@@ -99,6 +99,8 @@ netcdf_labels_predict = {}
 netcdf_labels_predicted = {}
 
 
+
+
 #Append data_dir and result_dir to appropriate files.
 for nf in range(len(args.training_features)):
     netcdf_features_train[nf] = args.data_dir + args.training_features[nf]
@@ -112,7 +114,7 @@ for nf in range(len(args.testing_features)):
 size_lev = xr.open_dataset(netcdf_features_predict[0]).lev.size #Zero right now because only one file
 
 # loop over all levels
-for lev in range(1,size_lev):
+for lev in range(size_lev):
     
     print("Training/predicting for level {level}".format(level=lev))
     
@@ -141,7 +143,7 @@ for lev in range(1,size_lev):
     scaled_train_x, scaled_predict_x, scaled_train_y, scalers_x, scalers_y = \
         scale_4d(train_x, predict_x, train_y, scalers_x, scalers_y, args.labels)
     
-    if (lev == 1) : # create the model only once.
+    if (lev == 0) : # create the model only once.
         # define the model
         model = Sequential()
 
@@ -193,6 +195,8 @@ for lev in range(1,size_lev):
     level_shape = (size_times_predict, size_lat, size_lon)
     prediction[:, lev, :, :] = np.reshape(unscaled_predict_y, newshape=level_shape)
 
+print('max_prediction:', prediction.max())
+
 #copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
 ds_predict_labels = xr.open_dataset(netcdf_labels_predict[0]) #Zero right now because only one file
 
@@ -205,11 +209,12 @@ for var in ds_predict_labels.data_vars:
 predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
                                   data=prediction,
                                   attrs=ds_predict_labels[args.labels[0]].attrs)
-ds_predict_labels[args.labels[0]] = predicted_label_var
+
+print("max_prediction from predicted_label_var:", predicted_label_var.values.max())
+
+ds_predict_labels[args.labels[0]+'_predicted'] = predicted_label_var
+
+print("max_prediction from ds_predict_labels:", ds_predict_labels[args.labels[0]+'_predicted'].values.max())
 
 # write the predicted label(s)' dataset as a NetCDF file
 ds_predict_labels.to_netcdf(netcdf_labels_predicted[0]) #Zero right now because only one file
-
-# # open the dataset containing the computed label values corresponding to the input features used for prediction
-# ds_cam_labels = xr.open_dataset(netcdf_labels_cam[0]) # This is hard coded to the zeroth because current
-#                                                        # implementation only has one file, need to revisit this.

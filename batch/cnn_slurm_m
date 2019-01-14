@@ -14,4 +14,4 @@ export TMPDIR=/glade/scratch/$USER/temp
 mkdir -p $TMPDIR
 
 source ~/.bashrc
-srun ../scripts/run_cnn.py /glade/scratch/cjablono/fv091x180L26_moist_HS/ ../results/cnn/ -training_features fv091x180L26_moist_HS.cam.h0.2000-12-27-00000.nc -testing_features fv091x180L26_moist_HS.cam.h0.2001-01-11-00000.nc --epochs 16
+srun ../scripts/run_cnn.py /glade/scratch/cjablono/fv091x180L26_moist_HS/ ../results/cnn/ -training_features fv091x180L26_moist_HS.cam.h0.2000-12-27-00000.nc -testing_features fv091x180L26_moist_HS.cam.h0.2001-01-11-00000.nc --labels LHFLX --epochs 8
