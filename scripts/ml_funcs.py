@@ -15,17 +15,20 @@ def extract_data_array(dataset,
     
     # for each variable we'll extract the values 
     for var_index, var in enumerate(variables):
-
-        # if we have (time, lev, lat, lon), then use level parameter
-        dimensions = dataset.variables[var].dims
-        if dimensions == ('time', 'lev', 'lat', 'lon'):
-            values = dataset[var].values[:, lev, :, :]
-        elif dimensions == ('time', 'lat', 'lon'):
-            values = dataset[var].values[:, :, :]
+        if var != 'P':
+            # if we have (time, lev, lat, lon), then use level parameter
+            dimensions = dataset.variables[var].dims
+            if dimensions == ('time', 'lev', 'lat', 'lon'):
+                values = dataset[var].values[:, lev, :, :]
+            elif dimensions == ('time', 'lat', 'lon'):
+                values = dataset[var].values[:, :, :]
+            else:
+                raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
         else:
-            raise ValueError("Unsupported variable dimensions: {dims}".format(dims=dimensions))
+            values = (dataset['hyam'].values[lev] * dataset['P0'].values + 
+                      dataset['hybm'].values[lev] * dataset['PS'].values[:,:,:]) 
 
-        # add the values into the array at the variable's position
+            # add the values into the array at the variable's position
         arr[:, :, :, var_index] = values
     
     return arr
@@ -115,3 +118,4 @@ def scale_4d(features_train,
     
     # return the scaled values as well as the scalers that have been fitted to the data
     return scaled_features_train, scaled_features_predict, scaled_labels_train, scalers_feature, scalers_label
+

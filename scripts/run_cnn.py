@@ -50,7 +50,7 @@ parser.add_argument('-training_features', type=str, nargs='+',
 parser.add_argument('-testing_features', type=str, nargs='+', 
                     help='List of file names of predicted features data inside data_dir. Corresponding to .h0. ' +
                     ' <name> files. Separate files with spaces.')
-parser.add_argument('--features', type=str, nargs='+', default=["PS","T","U","V"],
+parser.add_argument('--features', type=str, nargs='+', default=["P","T","U","V"],
                     help='Choices of "features." Dynamics variables are chosen as default and used to predict '+
                     'physical tendancies.')
 parser.add_argument('--labels', type=str, nargs='+', default=["PTTEND"],
@@ -98,9 +98,6 @@ netcdf_features_predict = {}
 netcdf_labels_predict = {}
 netcdf_labels_predicted = {}
 
-
-
-
 #Append data_dir and result_dir to appropriate files.
 for nf in range(len(args.training_features)):
     netcdf_features_train[nf] = args.data_dir + args.training_features[nf]
@@ -111,7 +108,9 @@ for nf in range(len(args.testing_features)):
     netcdf_labels_predict[nf] = args.data_dir + flnm.replace('.h0.','.h1.')
     netcdf_labels_predicted[nf] = args.result_dir + flnm.replace('.h0.','.h1.')[0:len(flnm)-3]+'_predicted.nc'
 
-size_lev = xr.open_dataset(netcdf_features_predict[0]).lev.size #Zero right now because only one file
+dmy = xr.open_dataset(netcdf_labels_predict[0])
+
+size_lev = dmy.lev.size #Zero right now because only one file
 
 # loop over all levels
 for lev in range(size_lev):
@@ -196,25 +195,11 @@ for lev in range(size_lev):
     prediction[:, lev, :, :] = np.reshape(unscaled_predict_y, newshape=level_shape)
 
 print('max_prediction:', prediction.max())
-
-#copy the prediction features dataset since the predicted label(s) should share the same coordinates, etc.
-ds_predict_labels = xr.open_dataset(netcdf_labels_predict[0]) #Zero right now because only one file
-
-# remove all non-label data variables from the predictions dataset
-for var in ds_predict_labels.data_vars:
-    if var not in args.labels:
-        ds_predict_labels = ds_predict_labels.drop(var)
-
-# create new variables to contain the predicted labels, assign these into the prediction dataset
-predicted_label_var = xr.Variable(dims=('time', 'lev', 'lat', 'lon'),
-                                  data=prediction,
-                                  attrs=ds_predict_labels[args.labels[0]].attrs)
-
-print("max_prediction from predicted_label_var:", predicted_label_var.values.max())
-
-ds_predict_labels[args.labels[0]+'_predicted'] = predicted_label_var
-
-print("max_prediction from ds_predict_labels:", ds_predict_labels[args.labels[0]+'_predicted'].values.max())
-
-# write the predicted label(s)' dataset as a NetCDF file
-ds_predict_labels.to_netcdf(netcdf_labels_predicted[0]) #Zero right now because only one file
+# Create Data Array from predicted data
+A = xr.DataArray(prediction,
+                 coords=dmy[args.labels[0]].coords,
+                 dims=dmy[args.labels[0]].dims,
+                 attrs=dmy[args.labels[0]].attrs)
+# Create Dataset with predicted and original data
+ds_predicted = xr.Dataset({args.labels[0]:dmy[args.labels[0]],args.labels[0]+'_p':A})
+ds_predicted.to_netcdf(netcdf_labels_predicted[0]) #Zero right now because only one file
